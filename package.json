@@ -1,0 +1,14 @@
+{
+  "name": "fuse-tag-manager",
+  "version": "0.0.1",
+  "description": "Tag manager for coredm",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Brad Pearson",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.716.0"
+  }
+}
