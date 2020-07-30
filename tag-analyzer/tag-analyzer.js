@@ -1,6 +1,6 @@
 const CONSTANTS = require("../util/constants.js");
 const { v4: uuidv4 } = require("uuid");
-const { addDynamoDBRecord, scanDynamoDB, queryDynamoDB } = require("../util/db");
+const { addDynamoDBRecord, scanDynamoDB, queryDynamoDB, deleteRecordsByPK } = require("../util/db");
 
 const getDynamoAWSObjects = () => {
     let filterExpression = "begins_with(#pk, :ec2_type) or begins_with(#pk, :rds_type)";
@@ -26,10 +26,6 @@ const getTagConfig = () => {
 };
 
 async function analyzeTagInfo(taggedObjects) {
-    const findTagKeyInList = (tagKey, tagKeyList) => {
-        return tagKeyList.some((tk) => tagKey === tk);
-    };
-
     const checkEnforcedTagValue = (tagValue, enforcedValues) => {
         // Try to match the value of the tag
         let tagValueMatched = false;
@@ -46,9 +42,25 @@ async function analyzeTagInfo(taggedObjects) {
         return tagValueMatched;
     };
 
+    const isTagKeyInConfigList = (tagKey, configObj) => {
+        let matched = false;
+        Object.keys(configObj).some((k) => {
+            if (
+                !matched &&
+                k != "enforced_tags" &&
+                (tagKey === configObj[k].key || tagKey === configObj[k].alternate_key)
+            ) {
+                matched = true;
+                return true;
+            }
+        });
+        return matched;
+    };
+
     let tagConfig = await getTagConfig();
 
     if (Array.isArray(tagConfig) && tagConfig.length > 0) {
+        let results = [];
         let tagConfigObj = tagConfig[0];
 
         // Build a list of the enforced tags
@@ -61,7 +73,9 @@ async function analyzeTagInfo(taggedObjects) {
                 unmatchedTags: [], // enforced but not found on instance
                 invalidTags: {}, // enforced and found but value is not matched
                 extraTags: {}, // Not enforced but found
+                taggedObj: { ...currTaggedObj }, // Add the original object for convenience
             };
+            //objTagAnalysis[CONSTANTS.PRIMARY_KEY_NAME] = currTaggedObj[CONSTANTS.PRIMARY_KEY_NAME];
 
             //Loop over the tags in the config info and try to match it to one of the tags in the db object
             tagConfigObj.enforced_tags.forEach((enforcedTag) => {
@@ -107,7 +121,7 @@ async function analyzeTagInfo(taggedObjects) {
 
             // Loop over each tag in the instance and find the tags that aren't in the master list
             currTaggedObj.Tags.forEach((currTag) => {
-                if (!findTagKeyInList(currTag.Key, enforcedKeys)) {
+                if (!isTagKeyInConfigList(currTag.Key, tagConfigObj)) {
                     objTagAnalysis.extraTags[currTag.Key] = currTag.Value;
                 }
             });
@@ -120,7 +134,27 @@ async function analyzeTagInfo(taggedObjects) {
     }
 }
 
-getDynamoAWSObjects()
+const getDynamoAnalysisRecords = () => {
+    let filterExpression = "begins_with(#pk, :analysis_type)";
+    let expressionAttributeNames = { "#pk": "_pk" };
+    let expressionAttributeValues = { ":analysis_type": CONSTANTS.ANALYSIS_OBJECT_TYPE };
+
+    // Query for EC2 object types
+    return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
+};
+
+console.log("clearing the analysis records from the table...");
+getDynamoAnalysisRecords()
+    .then((analysisRecords) =>
+        deleteRecordsByPK(
+            CONSTANTS.TABLE_NAME,
+            analysisRecords.map((ar) => ar[CONSTANTS.PRIMARY_KEY_NAME])
+        )
+    )
+    .then(() => {
+        console.log("table cleared. Querying for all tagged objects...");
+        return getDynamoAWSObjects();
+    })
     .then((taggedObjects) => {
         console.log(`found ${taggedObjects.length} objects from dynamodb`);
         return analyzeTagInfo(taggedObjects);
@@ -128,17 +162,26 @@ getDynamoAWSObjects()
     .then((tagAnalysisResults) => {
         console.log(`tag analysis complete. Writing to dynamodb...`);
         // Write the tag analysis to dynamodb
-        let analysisRecord = {
-            createdAt: new Date().toISOString(),
-            tagAnalysis: tagAnalysisResults,
-        };
+        let analysisRecords = tagAnalysisResults.map((rec) => {
+            let newRecord = {
+                createdAt: new Date().toISOString(),
+                ...rec,
+            };
+            newRecord[CONSTANTS.PRIMARY_KEY_NAME] = `${CONSTANTS.ANALYSIS_OBJECT_TYPE}-${uuidv4()}`;
 
-        analysisRecord[CONSTANTS.PRIMARY_KEY_NAME] = `${CONSTANTS.ANALYSIS_OBJECT_TYPE}-${uuidv4()}`;
+            return newRecord;
+        });
 
-        return addDynamoDBRecord(CONSTANTS.TABLE_NAME, analysisRecord);
+        let dbAddPromises = analysisRecords.map((ar) => {
+            return addDynamoDBRecord(CONSTANTS.TABLE_NAME, ar);
+        });
+
+        return Promise.all(dbAddPromises);
     })
-    .then(() => {
-        console.log("analysis object written successfully. Tags successfully processed");
+    .then((analysisRecordsWritten) => {
+        console.log(
+            `${analysisRecordsWritten.length} analysis records written successfully. Tags successfully processed`
+        );
     })
     .catch((err) => {
         console.log(`error analyzing tags. Error: ${err.message}`);

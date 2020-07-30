@@ -45,7 +45,7 @@ const deleteRecordsByPK = (tableName, primaryKeys) => {
 
         // Run the clear promises on all the instances
         Promise.all(promises).then(() => {
-            resolve();
+            resolve(promises.length);
         });
     });
 };
@@ -121,7 +121,6 @@ const queryDynamoDB = (tableName, keyConditionExpression, expressionAttributeNam
         });
     });
 };
-
 
 module.exports = {
     scanDynamoDB,
