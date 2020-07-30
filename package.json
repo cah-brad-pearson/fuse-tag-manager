@@ -4,11 +4,18 @@
   "description": "Tag manager for coredm",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "delete-deployment": "rm build/deployment.zip",
+    "add-node-source": "zip -r -j build/deployment.zip aws-importer/*",
+    "add-node-modules": "zip -r -u build/deployment.zip node_modules/*",
+    "build-importer": "npm run delete-deployment && npm run add-node-source && npm run add-node-modules",
+    "deploy-importer": "aws s3 cp ./build/deployment.zip s3://fuse-lambda-source-code/fuse-tag-manager-importer/deployment.zip",
+    "build-and-deploy": "npm run build-importer && npm run deploy-importer"
   },
   "author": "Brad Pearson",
   "license": "ISC",
   "dependencies": {
-    "aws-sdk": "^2.716.0"
+    "aws-sdk": "^2.716.0",
+    "uuid": "^8.2.0"
   }
 }
