@@ -1,11 +1,36 @@
 const AWS = require("aws-sdk");
 const rds = new AWS.RDS();
 const pLimit = require("p-limit");
+const { deleteRecordsByPK } = require("../util/db");
 
 const { v4: uuidv4 } = require("uuid");
 const CONSTANTS = require("../util/constants");
 
 const { scanDynamoDB } = require("../util/db");
+
+const clearAndFetchRDSInstances = () => {
+    return new Promise(async (resolve, reject) => {
+        console.log(`querying DB for RDS records...`);
+        try {
+            let rdsDynamoInstances = await getDynamoRDSInstances();
+            if (rdsDynamoInstances.length > 0) {
+                // Clear old records from dynamo
+                console.log(`deleting ${rdsDynamoInstances.length} records...`);
+                await deleteRecordsByPK(
+                    CONSTANTS.TABLE_NAME,
+                    rdsDynamoInstances.map((ins) => ins[CONSTANTS.PRIMARY_KEY_NAME])
+                );
+                console.log(`deleted all RDS records from the DB`);
+            }
+
+            // Query AWS for RDS instances
+            let rdsInstances = await getRDSInstancesFromAWS();
+            resolve(rdsInstances);
+        } catch (error) {
+            reject(`Error deleting and fetching new RDS records. Error: ${JSON.stringify(error)}`);
+        }
+    });
+};
 
 const getRDSInstancesFromAWS = () => {
     return new Promise((resolve, reject) => {
@@ -101,4 +126,5 @@ const getDynamoRDSInstances = () => {
 module.exports = {
     getRDSInstancesFromAWS,
     getDynamoRDSInstances,
+    clearAndFetchRDSRecords: clearAndFetchRDSInstances,
 };
