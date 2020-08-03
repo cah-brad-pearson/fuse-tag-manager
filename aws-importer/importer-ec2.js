@@ -1,5 +1,5 @@
 const AWS = require("aws-sdk");
-const utils = require("../util/db");
+const { deleteRecordsByPK, scanDynamoDB } = require("../util/db");
 const CONSTANTS = require("../util/constants");
 const { v4: uuidv4 } = require("uuid");
 const OS = require("os");
@@ -7,18 +7,41 @@ const OS = require("os");
 // Create EC2 service object
 const ec2 = new AWS.EC2({ apiVersion: "2016-11-15" });
 
+const clearAndFetchEc2Instances = () => {
+    return new Promise(async (resolve, reject) => {
+        console.log(`querying DB for EC2 records...`);
+        try {
+            let ec2DynamoRecords = await getDynamoEc2Instances();
+            console.log(`found ${ec2DynamoRecords.length} EC2 records in the DB...`);
+
+            // Clear old EC2 records from dynamo table
+            if (ec2DynamoRecords.length > 0) {
+                console.log(`deleting ${ec2DynamoRecords.length} records...`);
+                await deleteRecordsByPK(
+                    CONSTANTS.TABLE_NAME,
+                    ec2DynamoRecords.map((ti) => ti[CONSTANTS.PRIMARY_KEY_NAME])
+                );
+                console.log(`deleted all EC2 records from the DB`);
+            }
+
+            //Query AWS for EC2 instances
+            console.log(`querying AWS EC2 instances...`);
+            let ec2Instances = await getAWSEC2Instances();
+            console.log(`${ec2Instances.length} instances found`);
+            resolve(ec2Instances);
+        } catch (error) {
+            reject(`Error deleting and fetching EC2 records. Error ${JSON.stringify(error)}`);
+        }
+    });
+};
+
 const getDynamoEc2Instances = () => {
     let filterExpression = "begins_with(#pk, :ec2_type)";
     let expressionAttributeNames = { "#pk": "_pk" };
     let expressionAttributeValues = { ":ec2_type": CONSTANTS.EC2_OBJECT_TYPE };
 
     // Query for EC2 object types
-    return utils.scanDynamoDB(
-        CONSTANTS.TABLE_NAME,
-        filterExpression,
-        expressionAttributeNames,
-        expressionAttributeValues
-    );
+    return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
 };
 
 const getAWSEC2Instances = (params) => {
@@ -50,7 +73,8 @@ function checkError(err, exit = false) {
     }
 }
 
-module.export = {
+module.exports = {
     getAWSEC2Instances,
     getDynamoEc2Instances,
+    clearAndFetchEc2Instances,
 };
