@@ -1,77 +1,60 @@
 const AWS = require("aws-sdk");
 const CONSTANTS = require("../util/constants");
-const {
-    scanDynamoDB,
-    deleteDynamoDBRecord,
-    deleteRecordsByPK,
-    addDynamoDBRecord,
-    writeRecordsToDynamoDB,
-    queryDynamoDB,
-} = require("../util/db");
-
-const { getAWSEC2Instances, getDynamoEc2Instances } = require("./importer-ec2");
-
-const { getRDSInstancesFromAWS, getDynamoRDSInstances } = require("./importer-rds");
+const { writeRecordsToDynamoDB } = require("../util/db");
+const { clearAndFetchEc2Instances } = require("./importer-ec2");
+const { clearAndFetchRDSRecords } = require("./importer-rds");
+const { clearAndFetchEBSVolumes } = require("./importer-ebs");
+const { clearAndFetchS3Records } = require("./importer-s3");
 
 AWS.config.update({ region: "us-east-1" });
 
 async function processResources(cb) {
     // EC2 instances
-    try {
-        console.log(`querying DB for EC2 records...`);
-        let ec2DynamoRecords = await getDynamoEc2Instances();
-        console.log(`found ${ec2DynamoRecords.length} EC2 records in the DB...`);
+    // clearAndFetchEc2Instances()
+    //     .then((ec2Instances) => {
+    //         // Populate the DB table
+    //         return writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ec2Instances);
+    //     })
+    //     .then((ec2RecordsWritten) => {
+    //         console.log(`wrote ${ec2RecordsWritten} EC2 records to db table`);
+    //     })
+    //     // RDS instances
+    //     .then(() => {
+    //         return clearAndFetchRDSRecords();
+    //     })
 
-        // Clear old EC2 records from dynamo table
-        if (ec2DynamoRecords.length > 0) {
-            console.log(`deleting ${ec2DynamoRecords.length} records...`);
-            await deleteRecordsByPK(
-                CONSTANTS.TABLE_NAME,
-                ec2DynamoRecords.map((ti) => ti[CONSTANTS.PRIMARY_KEY_NAME])
-            );
-            console.log(`deleted all EC2 records from the DB`);
-        }
-
-        //Query AWS for EC2 instances
-        console.log(`querying AWS EC2 instances...`);
-        let ec2Instances = await getAWSEC2Instances();
-        console.log(`${ec2Instances.length} instances to process`);
-
-        // Populate the DB table
-        let instancesWritten = await writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ec2Instances);
-        console.log(`wrote ${instancesWritten} EC2 records to db table`);
-    } catch (error) {
-        console.error(`error processing EC2 records. Error: ${error.message}`);
-    }
-
-    // RDS instances
-    try {
-        console.log(`querying DB for RDS records...`);
-        let rdsDynamoInstances = await getDynamoRDSInstances();
-        if (rdsDynamoInstances.length > 0) {
-            // Clear old records from dynamo
-            console.log(`deleting ${rdsDynamoInstances.length} records...`);
-            await deleteRecordsByPK(
-                CONSTANTS.TABLE_NAME,
-                rdsDynamoInstances.map((ins) => ins[CONSTANTS.PRIMARY_KEY_NAME])
-            );
-            console.log(`deleted all RDS records from the DB`);
-        }
-
-        // Query AWS for RDS instances
-        let rdsInstances = await getRDSInstancesFromAWS();
-
-        let rdsDBWritten = await writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, rdsInstances);
-        console.log(`wrote ${rdsDBWritten} RDS records to db table`);
-    } catch (error) {
-        console.error(`Error processing RDS records. Error: ${error.message}`);
-    }
-
-    // Query AWS for EBS volumes
-
-    // Query AWS for S3 buckets
-
-    cb && cb(null, 1);
+    // .then((rdsInstances) => {
+    //     return writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, rdsInstances);
+    // })
+    // .then((rdsRecordsWritten) => {
+    //     console.log(`wrote ${rdsRecordsWritten} RDS records to db table`);
+    // })
+    // // Query AWS for EBS volumes
+    // .then(() => {
+    //     getEBSVolumes();
+    // })
+    // clearAndFetchEBSVolumes()
+    //     .then((ebsVolumes) => {
+    //         console.log(`fetched ${ebsVolumes.length} EBS records`);
+    //         return writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ebsVolumes);
+    //     })
+    //     .then((recordsWritten) => {
+    //         console.log(`wrote ${recordsWritten} EBS records to db table`);
+    //     })
+    clearAndFetchS3Records()
+        .then((buckets) => {
+            console.log(`${buckets.length} buckets fetched from S3`);
+            return writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, buckets);
+        })
+        .then((recordsWritten) => {
+            console.log(`wrote ${recordsWritten} S3 records to db table`);
+        })
+        .catch((error) => {
+            console.error(`error processing AWS records. Error: ${error}`);
+        })
+        .finally(() => {
+            typeof cb == "function" && cb();
+        });
 }
 
 //processInstances();
