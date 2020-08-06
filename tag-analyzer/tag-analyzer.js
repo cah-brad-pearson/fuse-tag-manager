@@ -1,14 +1,17 @@
 const CONSTANTS = require("../util/constants.js");
 const { v4: uuidv4 } = require("uuid");
 const { addDynamoDBRecord, scanDynamoDB, queryDynamoDB, deleteRecordsByPK } = require("../util/db");
+const pLimit = require("p-limit");
 
 const getDynamoAWSObjects = () => {
-    let filterExpression = "begins_with(#pk, :ec2_type) or begins_with(#pk, :rds_type) or begins_with(#pk, :ebs_type)";
+    let filterExpression =
+        "begins_with(#pk, :ec2_type) or begins_with(#pk, :rds_type) or begins_with(#pk, :ebs_type) or begins_with(#pk, :s3_type)";
     let expressionAttributeNames = { "#pk": "_pk" };
     let expressionAttributeValues = {
         ":ec2_type": CONSTANTS.EC2_OBJECT_TYPE,
         ":rds_type": CONSTANTS.RDS_OBJECT_TYPE,
         ":ebs_type": CONSTANTS.EBS_OBJECT_TYPE,
+        ":s3_type": CONSTANTS.S3_OBJECT_TYPE,
     };
 
     // Query for EC2 object types
@@ -84,6 +87,10 @@ async function analyzeTagInfo(taggedObjects) {
             //Loop over the tags in the config info and try to match it to one of the tags in the db object
             tagConfigObj.enforced_tags.forEach((enforcedTag) => {
                 let foundTag = false;
+                // Add the
+                if (!currTaggedObj.Tags) {
+                    currTaggedObj.Tags = [];
+                }
                 currTaggedObj.Tags.some((instanceTag) => {
                     let lowerInstanceTagKey = instanceTag.Key.toLowerCase();
                     let enforcedTagKey = tagConfigObj[enforcedTag].key;
@@ -171,14 +178,14 @@ getDynamoAnalysisRecords()
                 createdAt: new Date().toISOString(),
                 ...rec,
             };
+            // Add the analysis record PK
             newRecord[CONSTANTS.PRIMARY_KEY_NAME] = `${CONSTANTS.ANALYSIS_OBJECT_TYPE}-${uuidv4()}`;
 
             return newRecord;
         });
 
-        let dbAddPromises = analysisRecords.map((ar) => {
-            return addDynamoDBRecord(CONSTANTS.TABLE_NAME, ar);
-        });
+        const limit = pLimit(100);
+        let dbAddPromises = analysisRecords.map((ar) => limit(() => addDynamoDBRecord(CONSTANTS.TABLE_NAME, ar)));
 
         return Promise.all(dbAddPromises);
     })
