@@ -59,10 +59,10 @@ const getS3BucketsFromAWS = () => {
                     Bucket: bucketObj.Name,
                 };
 
-                s3.getBucketTagging(params, function (err, data) {
+                s3.getBucketTagging(params, (err, data) => {
                     if (err) {
                         console.warn(`error getting tag list for bucket ${bucketObj.Name}: ${err.message}`);
-                        res({ ...bucketObj });
+                        res({ ...bucketObj, Tags: [] });
                     } else {
                         let newBucketObj = { ...bucketObj };
                         newBucketObj.Tags = data.TagSet;
