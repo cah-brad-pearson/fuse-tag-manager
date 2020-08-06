@@ -3,9 +3,13 @@ const { v4: uuidv4 } = require("uuid");
 const { addDynamoDBRecord, scanDynamoDB, queryDynamoDB, deleteRecordsByPK } = require("../util/db");
 
 const getDynamoAWSObjects = () => {
-    let filterExpression = "begins_with(#pk, :ec2_type) or begins_with(#pk, :rds_type)";
+    let filterExpression = "begins_with(#pk, :ec2_type) or begins_with(#pk, :rds_type) or begins_with(#pk, :ebs_type)";
     let expressionAttributeNames = { "#pk": "_pk" };
-    let expressionAttributeValues = { ":ec2_type": CONSTANTS.EC2_OBJECT_TYPE, ":rds_type": CONSTANTS.RDS_OBJECT_TYPE };
+    let expressionAttributeValues = {
+        ":ec2_type": CONSTANTS.EC2_OBJECT_TYPE,
+        ":rds_type": CONSTANTS.RDS_OBJECT_TYPE,
+        ":ebs_type": CONSTANTS.EBS_OBJECT_TYPE,
+    };
 
     // Query for EC2 object types
     console.log(`querying dynamodb for all aws objects to analyze...`);
