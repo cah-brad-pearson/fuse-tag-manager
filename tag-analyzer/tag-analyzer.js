@@ -1,7 +1,17 @@
-const CONSTANTS = require("../util/constants.js");
 const { v4: uuidv4 } = require("uuid");
-const { addDynamoDBRecord, scanDynamoDB, queryDynamoDB, deleteRecordsByPK } = require("../util/db");
 const pLimit = require("p-limit");
+
+const CONSTANTS = require("../util/constants.js");
+const { addDynamoDBRecord, scanDynamoDB, queryDynamoDB, deleteRecordsByPK, getConfig } = require("../util/db");
+const { logger } = require("../util/logger");
+const { tagValueFinder, hasPopulationInstruction } = require("../util/tag-value-finder");
+const { config } = require("aws-sdk");
+const TAG_FINDER_VALUES = {
+    VALID: "tagValueValid",
+    INVALID: "tagValueInvalid",
+    NOT_FOUND: "tagKeyNotFound",
+    EXTRA: "extraTag",
+};
 
 const getDynamoAWSObjects = () => {
     let filterExpression =
@@ -15,134 +25,167 @@ const getDynamoAWSObjects = () => {
     };
 
     // Query for EC2 object types
-    console.log(`querying dynamodb for all aws objects to analyze...`);
+    logger.info(`querying dynamodb for all aws objects to analyze...`);
     return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
 };
 
-const getTagConfig = () => {
-    // Query the DB for the config info
-    let keyCondition = `#pk = :config_pk`;
-    let expressionAttributeNames = {
-        "#pk": CONSTANTS.PRIMARY_KEY_NAME,
-    };
-    let expressionAttributeValues = {
-        ":config_pk": CONSTANTS.CONFIG_PK,
-    };
-
-    return queryDynamoDB(CONSTANTS.TABLE_NAME, keyCondition, expressionAttributeNames, expressionAttributeValues);
-};
-
 async function analyzeTagInfo(taggedObjects) {
-    const checkEnforcedTagValue = (tagValue, enforcedValues) => {
+    const getEnforcedTagValue = (resource, tagKey, tagValue, config) => {
+        let resolvedTagKey = tagKey;
+
+        if (!config[tagKey]) {
+            let isResolved = false;
+            // Find the correct config key name
+            Object.keys(config)
+                .filter((k) => k !== CONSTANTS.PRIMARY_KEY_NAME)
+                .some((configKey) => {
+                    return config[configKey][CONSTANTS.VALID_KEY_NAMES].some((vkv) => {
+                        if (vkv === tagKey) {
+                            resolvedTagKey = configKey;
+                            isResolved = true;
+                            return true;
+                        }
+                    });
+                });
+
+            if (!isResolved) return TAG_FINDER_VALUES.EXTRA;
+        }
+
+        if (hasPopulationInstruction(resolvedTagKey, config)) {
+            let objectType = resource[CONSTANTS.PRIMARY_KEY_NAME].split("-")[0];
+            let objectIdentifier =
+                resource.InstanceId || resource.DBInstanceIdentifier || resource.Name || resource.VolumeId;
+
+            // Normalize the resource tags to the expected map of key:value
+            let resourceTagObj = {};
+            resource.Tags.forEach((kvp) => {
+                resourceTagObj[kvp.Key] = kvp.Value;
+            });
+
+            let value = tagValueFinder(tagKey, resourceTagObj, objectType, objectIdentifier, config);
+            return value ? TAG_FINDER_VALUES.VALID : TAG_FINDER_VALUES.INVALID;
+        }
+
+        // Just a normal lookup
         // Try to match the value of the tag
-        let tagValueMatched = false;
-        if (enforcedValues.length == 0) return true;
-        enforcedValues.some((enforcedTagVal) => {
+        let tagValues = Array.isArray(config[resolvedTagKey].values)
+            ? config[resolvedTagKey].values
+            : Object.keys(config[resolvedTagKey].values);
+
+        // If there are no enforced values, any value is valid
+        if (tagValues.length == 0) {
+            return TAG_FINDER_VALUES.VALID;
+        }
+
+        let foundTagValue = TAG_FINDER_VALUES.INVALID;
+        tagValues.some((enforcedTagVal) => {
             let lowerInstanceTagValue = tagValue.toLowerCase();
             if (lowerInstanceTagValue === enforcedTagVal) {
-                // Tag matches and value matches
-                tagValueMatched = true;
+                // Tag matches
+                foundTagValue = TAG_FINDER_VALUES.VALID;
                 return true;
             }
         });
 
-        return tagValueMatched;
+        return foundTagValue;
     };
 
-    const isTagKeyInConfigList = (tagKey, configObj) => {
-        let matched = false;
-        Object.keys(configObj).some((k) => {
-            if (
-                !matched &&
-                k != "enforced_tags" &&
-                (tagKey === configObj[k].key || tagKey === configObj[k].alternate_key)
-            ) {
-                matched = true;
-                return true;
-            }
-        });
-        return matched;
-    };
+    return new Promise(async (resolve, reject) => {
+        let tagConfig = await getConfig();
 
-    let tagConfig = await getTagConfig();
+        if (tagConfig) {
+            let results = [];
 
-    if (Array.isArray(tagConfig) && tagConfig.length > 0) {
-        let results = [];
-        let tagConfigObj = tagConfig[0];
+            // Build a list of the enforced tags
+            logger.info(`Iterating over ${taggedObjects.length} objects...`);
+            let objCount = 0;
+            taggedObjects.slice(0, 100).forEach((currTaggedObj) => {
+                objCount++;
+                const objTagAnalysis = {
+                    matchedTags: {}, // enforced and value is valid
+                    unmatchedTags: [], // enforced but not found on instance
+                    invalidTags: {}, // enforced and found but value is not matched
+                    extraTags: {}, // Not enforced but found
+                    taggedObj: { ...currTaggedObj }, // Add the original object for reference
+                };
 
-        // Build a list of the enforced tags
-        console.log(`Iterating over ${taggedObjects.length} objects...`);
-        let objCount = 0;
-        taggedObjects.forEach((currTaggedObj) => {
-            objCount++;
-            const objTagAnalysis = {
-                matchedTags: {}, // enforced and value is valid
-                unmatchedTags: [], // enforced but not found on instance
-                invalidTags: {}, // enforced and found but value is not matched
-                extraTags: {}, // Not enforced but found
-                taggedObj: { ...currTaggedObj }, // Add the original object for convenience
-            };
-            //objTagAnalysis[CONSTANTS.PRIMARY_KEY_NAME] = currTaggedObj[CONSTANTS.PRIMARY_KEY_NAME];
-
-            //Loop over the tags in the config info and try to match it to one of the tags in the db object
-            tagConfigObj.enforced_tags.forEach((enforcedTag) => {
-                let foundTag = false;
-                // Add the
+                // Add the base tags object
                 if (!currTaggedObj.Tags) {
                     currTaggedObj.Tags = [];
                 }
-                currTaggedObj.Tags.some((instanceTag) => {
-                    let lowerInstanceTagKey = instanceTag.Key.toLowerCase();
-                    let enforcedTagKey = tagConfigObj[enforcedTag].key;
-                    let alternateTagKey = tagConfigObj[enforcedTag].alternate_key;
-                    // Match on either the tag key or the alternate key
-                    if (
-                        lowerInstanceTagKey === enforcedTagKey ||
-                        (alternateTagKey && lowerInstanceTagKey === alternateTagKey)
-                    ) {
-                        foundTag = true;
-                        if (checkEnforcedTagValue(instanceTag.Value, tagConfigObj[enforcedTag].values)) {
+
+                currTaggedObj.Tags.forEach((resourceTag) => {
+                    let lowerResourceTagKey = resourceTag.Key.toLowerCase();
+                    let lowerResourceTagValue = resourceTag.Value.toLowerCase();
+
+                    // Check if this value for the tag is valid, invalid or not found as an enforced tag
+                    let tagValue = getEnforcedTagValue(
+                        currTaggedObj,
+                        lowerResourceTagKey,
+                        lowerResourceTagValue,
+                        tagConfig
+                    );
+
+                    switch (tagValue) {
+                        case TAG_FINDER_VALUES.VALID:
                             // Matched the tag and the value - yea!
-                            objTagAnalysis.matchedTags[instanceTag.Key] = instanceTag.Value;
-                        } else {
-                            //Matched the tag but not the value
-                            objTagAnalysis.invalidTags[instanceTag.Key] = instanceTag.Value;
-                        }
-                        // Break out of the some function since we found this tag
-                        return true;
+                            objTagAnalysis.matchedTags[resourceTag.Key] = resourceTag.Value;
+                            break;
+                        case TAG_FINDER_VALUES.INVALID:
+                            //Matched the tag but not the value.
+                            objTagAnalysis.invalidTags[resourceTag.Key] = resourceTag.Value;
+                            break;
+                        case TAG_FINDER_VALUES.EXTRA:
+                            objTagAnalysis.extraTags[resourceTag.Key] = resourceTag.Value;
                     }
                 });
-                if (!foundTag) {
-                    // Didn't find the enforced tag
-                    objTagAnalysis.unmatchedTags.push(enforcedTag);
-                }
-            });
-            switch (currTaggedObj[CONSTANTS.PRIMARY_KEY_NAME]) {
-                case CONSTANTS.EC2_OBJECT_TYPE:
-                    console.log(
-                        `processed EC2 instance ${currTaggedObj.InstanceId} [${objCount} of ${numOfInstances}]`
-                    );
-                    break;
-                case CONSTANTS.RDS_OBJECT_TYPE:
-                    console.log(
-                        `processed RDS instance ${currTaggedObj.DBInstanceIdentifier} [${objCount} of ${numOfInstances}]`
-                    );
-                    break;
-            }
 
-            // Loop over each tag in the instance and find the tags that aren't in the master list
-            currTaggedObj.Tags.forEach((currTag) => {
-                if (!isTagKeyInConfigList(currTag.Key, tagConfigObj)) {
-                    objTagAnalysis.extraTags[currTag.Key] = currTag.Value;
-                }
-            });
+                //Loop over the tags in the config info and try to match it to one of the tags in the db object
+                let requiredTags = Object.keys(tagConfig).filter((k) => k !== CONSTANTS.PRIMARY_KEY_NAME);
 
-            results.push(objTagAnalysis);
-        });
-        return results;
-    } else {
-        console.error("couldn't find the config object from dynamodb");
-    }
+                requiredTags.forEach((reqTag) => {
+                    let validKeys = tagConfig[reqTag][CONSTANTS.VALID_KEY_NAMES];
+                    let keyFound = validKeys.some((vk) => {
+                        return currTaggedObj.Tags.some((currTag) => currTag.Key.toLowerCase() === vk.toLowerCase());
+                    });
+                    if (!keyFound) {
+                        objTagAnalysis.unmatchedTags.push(reqTag);
+                    }
+                });
+
+                // Log what we just processed
+                let resourceIdentifier = "";
+                let resourceType = "";
+                const resourceTypeArr = currTaggedObj[CONSTANTS.PRIMARY_KEY_NAME].split("-");
+                switch (resourceTypeArr[0]) {
+                    case CONSTANTS.EC2_OBJECT_TYPE:
+                        resourceIdentifier = currTaggedObj.InstanceId;
+                        resourceType = CONSTANTS.EC2_OBJECT_TYPE;
+                        break;
+                    case CONSTANTS.RDS_OBJECT_TYPE:
+                        resourceIdentifier = currTaggedObj.DBInstanceIdentifier;
+                        resourceType = CONSTANTS.RDS_OBJECT_TYPE;
+                        break;
+                    case CONSTANTS.EBS_OBJECT_TYPE:
+                        resourceIdentifier = currTaggedObj.VolumeId;
+                        resourceType = CONSTANTS.EBS_OBJECT_TYPE;
+                        break;
+                    case CONSTANTS.S3_OBJECT_TYPE:
+                        resourceIdentifier = currTaggedObj.Name;
+                        resourceType = CONSTANTS.S3_OBJECT_TYPE;
+                        break;
+                }
+
+                logger.info(
+                    `processed ${resourceType} resource ${resourceIdentifier} [${objCount} of ${taggedObjects.length}]`
+                );
+                results.push(objTagAnalysis);
+            });
+            resolve(results);
+        } else {
+            logger.error("couldn't find the config object from dynamodb");
+        }
+    });
 }
 
 const getDynamoAnalysisRecords = () => {
@@ -154,7 +197,7 @@ const getDynamoAnalysisRecords = () => {
     return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
 };
 
-console.log("clearing the analysis records from the table...");
+logger.info("clearing the analysis records from the table...");
 getDynamoAnalysisRecords()
     .then((analysisRecords) =>
         deleteRecordsByPK(
@@ -163,15 +206,15 @@ getDynamoAnalysisRecords()
         )
     )
     .then(() => {
-        console.log("table cleared. Querying for all tagged objects...");
+        logger.info("table cleared. Querying for all tagged objects...");
         return getDynamoAWSObjects();
     })
     .then((taggedObjects) => {
-        console.log(`found ${taggedObjects.length} objects from dynamodb`);
+        logger.info(`found ${taggedObjects.length} objects from dynamodb`);
         return analyzeTagInfo(taggedObjects);
     })
     .then((tagAnalysisResults) => {
-        console.log(`tag analysis complete. Writing to dynamodb...`);
+        logger.info(`tag analysis complete. Writing to dynamodb...`);
         // Write the tag analysis to dynamodb
         let analysisRecords = tagAnalysisResults.map((rec) => {
             let newRecord = {
@@ -190,10 +233,11 @@ getDynamoAnalysisRecords()
         return Promise.all(dbAddPromises);
     })
     .then((analysisRecordsWritten) => {
-        console.log(
+        logger.info(
             `${analysisRecordsWritten.length} analysis records written successfully. Tags successfully processed`
         );
+        process.nextTick(() => process.exit(0));
     })
     .catch((err) => {
-        console.log(`error analyzing tags. Error: ${err.message}`);
+        logger.info(`error analyzing tags. Error: ${err.message}`);
     });

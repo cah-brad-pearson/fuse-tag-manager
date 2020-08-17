@@ -1,6 +1,8 @@
 const AWS = require("aws-sdk");
+const CONSTANTS = require("./constants");
 AWS.config.update({ region: "us-east-1" });
 const docClient = new AWS.DynamoDB.DocumentClient();
+const { logger } = require("../util/logger");
 
 const scanDynamoDB = (tableName, filterExpression, expressionAttributeNames, expressionAttributeValues) => {
     return new Promise((resolve, reject) => {
@@ -16,12 +18,12 @@ const scanDynamoDB = (tableName, filterExpression, expressionAttributeNames, exp
 
         const onScan = (err, data) => {
             if (err) {
-                console.error("unable to scan. Error:", JSON.stringify(err, null, 2));
+                logger.error("unable to scan. Error:", JSON.stringify(err, null, 2));
             } else {
-                console.log(`scan returned ${data.Items.length} items...`);
+                logger.log(`scan returned ${data.Items.length} items...`);
                 dataItems = [].concat(dataItems, data.Items);
                 if (data.LastEvaluatedKey) {
-                    console.log("more items exist, scanning more...");
+                    logger.log("more items exist, scanning more...");
                     queryParams.ExclusiveStartKey = data.LastEvaluatedKey;
                     docClient.scan(queryParams, onScan);
                 } else {
@@ -57,13 +59,13 @@ const deleteDynamoDBRecord = (tableName, key) => {
             Key: key,
         };
 
-        //console.log("Attempting to delete record...");
+        //logger.log("Attempting to delete record...");
         docClient.delete(params, (err, data) => {
             if (err) {
-                console.error(`Unable to delete record. Error: ${JSON.stringify(err, null, 2)}`);
+                logger.error(`Unable to delete record. Error: ${JSON.stringify(err, null, 2)}`);
                 reject();
             } else {
-                //console.log("Delete succeeded");
+                //logger.log("Delete succeeded");
                 resolve();
             }
         });
@@ -72,7 +74,7 @@ const deleteDynamoDBRecord = (tableName, key) => {
 
 const addDynamoDBRecord = (tableName, item) => {
     return new Promise((resolve, reject) => {
-        //console.log("Writing DB record");
+        //logger.log("Writing DB record");
         let params = {
             TableName: tableName,
             Item: item,
@@ -80,10 +82,10 @@ const addDynamoDBRecord = (tableName, item) => {
 
         docClient.put(params, (err, data) => {
             if (err) {
-                console.error(`Unable to add record. Error: ${JSON.stringify(err, null, 2)}`);
+                logger.error(`Unable to add record. Error: ${JSON.stringify(err, null, 2)}`);
                 reject();
             } else {
-                //console.log("Record added");
+                //logger.log("Record added");
                 resolve();
             }
         });
@@ -114,12 +116,26 @@ const queryDynamoDB = (tableName, keyConditionExpression, expressionAttributeNam
 
         docClient.query(params, (err, data) => {
             if (err) {
-                console.error(`Error querying dynamoDB. Error: ${err.message}`);
+                logger.error(`Error querying dynamoDB. Error: ${err.message}`);
                 rej(err.message);
             }
-            res(data.Items);
+            let itemsToReturn = data.Items && Array.isArray(data.Items) && data.Items.length > 0 ? data.Items[0] : [];
+            res(itemsToReturn);
         });
     });
+};
+
+const getConfig = () => {
+    // Query the DB for the config info
+    let keyCondition = `#pk = :config_pk`;
+    let expressionAttributeNames = {
+        "#pk": CONSTANTS.PRIMARY_KEY_NAME,
+    };
+    let expressionAttributeValues = {
+        ":config_pk": CONSTANTS.CONFIG_PK,
+    };
+
+    return queryDynamoDB(CONSTANTS.TABLE_NAME, keyCondition, expressionAttributeNames, expressionAttributeValues);
 };
 
 module.exports = {
@@ -129,4 +145,5 @@ module.exports = {
     addDynamoDBRecord,
     writeRecordsToDynamoDB,
     queryDynamoDB,
+    getConfig,
 };
