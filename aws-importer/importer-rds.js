@@ -2,6 +2,7 @@ const AWS = require("aws-sdk");
 const rds = new AWS.RDS();
 const pLimit = require("p-limit");
 const { deleteRecordsByPK } = require("../util/db");
+const logger = require("../util/logger").init();
 
 const { v4: uuidv4 } = require("uuid");
 const CONSTANTS = require("../util/constants");
@@ -10,17 +11,17 @@ const { scanDynamoDB } = require("../util/db");
 
 const clearAndFetchRDSInstances = () => {
     return new Promise(async (resolve, reject) => {
-        console.log(`querying DB for RDS records...`);
+        logger.info(`querying DB for RDS records...`);
         try {
             let rdsDynamoInstances = await getDynamoRDSInstances();
             if (rdsDynamoInstances.length > 0) {
                 // Clear old records from dynamo
-                console.log(`deleting ${rdsDynamoInstances.length} records...`);
+                logger.info(`deleting ${rdsDynamoInstances.length} records...`);
                 await deleteRecordsByPK(
                     CONSTANTS.TABLE_NAME,
                     rdsDynamoInstances.map((ins) => ins[CONSTANTS.PRIMARY_KEY_NAME])
                 );
-                console.log(`deleted all RDS records from the DB`);
+                logger.info(`deleted all RDS records from the DB`);
             }
 
             // Query AWS for RDS instances
@@ -43,7 +44,7 @@ const getRDSInstancesFromAWS = () => {
                     rds.describeDBInstances(params, (err, data) => {
                         if (err) {
                             rej(err);
-                            console.log(err, err.stack);
+                            logger.info(err, err.stack);
                         } else rdsInstances = [].concat(rdsInstances, data.DBInstances);
 
                         if (data.Marker) {
@@ -56,9 +57,9 @@ const getRDSInstancesFromAWS = () => {
             });
         };
 
-        console.log(`Getting RDS data from AWS...`);
+        logger.info(`Getting RDS data from AWS...`);
         getDBInstances().then(() => {
-            console.log(`${rdsInstances.length} RDS instances fetched from AWS`);
+            logger.info(`${rdsInstances.length} RDS instances fetched from AWS`);
             // // Get the tags for each RDS instance
             const tagPromises = [];
             const limit = pLimit(1);
@@ -70,7 +71,7 @@ const getRDSInstancesFromAWS = () => {
                 );
             });
 
-            console.log(`Getting tag records for RDS instances from AWS...`);
+            logger.info(`Getting tag records for RDS instances from AWS...`);
 
             Promise.all(tagPromises)
                 .then((results) => {
@@ -86,11 +87,11 @@ const getRDSInstancesFromAWS = () => {
                             }
                         });
                     });
-                    console.log(`\nTags fetched successfully`);
+                    logger.info(`\nTags fetched successfully`);
                     resolve(rdsInstances);
                 })
                 .catch((err) => {
-                    console.error(`\nError getting RDS tags from AWS. Error: ${err.message}`);
+                    logger.error(`\nError getting RDS tags from AWS. Error: ${err.message}`);
                 });
         });
     });

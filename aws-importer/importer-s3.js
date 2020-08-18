@@ -1,6 +1,7 @@
 const AWS = require("aws-sdk");
 const s3 = new AWS.S3();
 const { deleteRecordsByPK } = require("../util/db");
+const logger = require("../util/logger").init();
 
 const { v4: uuidv4 } = require("uuid");
 const CONSTANTS = require("../util/constants");
@@ -9,17 +10,17 @@ const { scanDynamoDB } = require("../util/db");
 
 const clearAndFetchS3Records = () => {
     return new Promise(async (resolve, reject) => {
-        console.log(`querying DB for S3 buckets...`);
+        logger.info(`querying DB for S3 buckets...`);
         try {
             let s3DynamoInstances = await getDynamoS3Instances();
             if (s3DynamoInstances.length > 0) {
                 // Clear old records from dynamo
-                console.log(`deleting ${s3DynamoInstances.length} records...`);
+                logger.info(`deleting ${s3DynamoInstances.length} records...`);
                 await deleteRecordsByPK(
                     CONSTANTS.TABLE_NAME,
                     s3DynamoInstances.map((ins) => ins[CONSTANTS.PRIMARY_KEY_NAME])
                 );
-                console.log(`deleted all S3 bucket records from the DB`);
+                logger.info(`deleted all S3 bucket records from the DB`);
             }
             // Query AWS for RDS instances
             let s3Instances = await getS3BucketsFromAWS();
@@ -38,7 +39,7 @@ const getS3BucketsFromAWS = () => {
             return new Promise((res, rej) => {
                 s3.listBuckets(params, (err, data) => {
                     if (err) {
-                        console.log(err, err.stack);
+                        logger.info(err, err.stack);
                         rej(err);
                     }
                     // Add in primary key
@@ -61,7 +62,7 @@ const getS3BucketsFromAWS = () => {
 
                 s3.getBucketTagging(params, (err, data) => {
                     if (err) {
-                        console.warn(`error getting tag list for bucket ${bucketObj.Name}: ${err.message}`);
+                        logger.warn(`error getting tag list for bucket ${bucketObj.Name}: ${err.message}`);
                         res({ ...bucketObj, Tags: [] });
                     } else {
                         let newBucketObj = { ...bucketObj };
@@ -72,11 +73,11 @@ const getS3BucketsFromAWS = () => {
             });
         };
 
-        console.log(`Getting S3 bucket data from AWS...`);
+        logger.info(`Getting S3 bucket data from AWS...`);
 
         getS3Buckets()
             .then((buckets) => {
-                console.log(`${buckets.length} buckets fetched from AWS`);
+                logger.info(`${buckets.length} buckets fetched from AWS`);
                 // Get all tags for the buckets
                 let tagPromises = buckets.map((b) => {
                     return getBucketTags(b);
@@ -88,7 +89,7 @@ const getS3BucketsFromAWS = () => {
                 resolve(bucketsWithTags);
             })
             .catch((err) => {
-                console.error(`\nError getting S3 buckets from AWS. Error: ${err.message}`);
+                logger.error(`\nError getting S3 buckets from AWS. Error: ${err.message}`);
             });
     });
 };

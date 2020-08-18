@@ -1,4 +1,4 @@
-const { logger } = require("./logger");
+const logger = require("./logger").init();
 const CONSTANTS = require("./constants");
 
 const hasPopulationInstruction = (tagKey, config) => {
@@ -25,7 +25,9 @@ const hasPopulationInstruction = (tagKey, config) => {
     return configTagObj.alwaysPopulate || configTagObj.copyValue || configTagObj.lookupValue;
 };
 
+// All tag values are assumed to be normalized and found in the list of config keys
 const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config) => {
+    // TODO: add in functionality to lookup a value from a map as well as an array
     // In order to derive the correct value for the tag, we need to have an instruction on the config
     // tag to tell us what to do. The current instructions are:
     // copyValue: copy the value of the tag from one of the tags in the list. The first match wins
@@ -34,35 +36,20 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
 
     let tagValue = "";
 
-    if (!config[tagKey]) {
-        // Find the correct config key name
-        Object.keys(config).some((configKey) => {
-            return config[configKey][CONSTANTS.VALID_KEY_NAMES].some((vkv) => {
-                if (vkv === tagKey) {
-                    tagKey = configKey;
-                    return true;
-                }
-            });
-        });
-    }
-
+    // Populate the value of the key with the name of the key since it doesn't matter. We just want to have some value
     if (config[tagKey].alwaysPopulate) {
-        tagValue = "";
+        tagValue = config[tagKey];
     } else if (config[tagKey].copyValue) {
         let keyToCopyFrom = config[tagKey].copyValue;
-        let vkvs = config[keyToCopyFrom][CONSTANTS.VALID_KEY_NAMES];
 
         // Only copy it from a valid, matched tag
         let foundCopyFromValue = false;
         Object.keys(validTags).some((t) => {
-            return vkvs.some((v) => {
-                if (v.toLowerCase() === t.toLowerCase()) {
-                    //tagsToWrite[tagKey] = analysisRecord.matchedTags[t];
-                    tagValue = validTags[t];
-                    foundCopyFromValue = true;
-                    return true;
-                }
-            });
+            if (tagKey === t && validTags[t]) {
+                tagValue = validTags[t];
+                foundCopyFromValue = true;
+                return true;
+            }
         });
 
         if (!foundCopyFromValue) {
@@ -72,18 +59,18 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
         }
     } else if (config[tagKey].lookupValue) {
         let lookupValue = config[tagKey].lookupValue;
-        let foundRefValue;
+
         // Only allow a reference to a matched, valid tag
-        config[lookupValue][CONSTANTS.VALID_KEY_NAMES].some((t) => {
-            return Object.keys(validTags).some((vkv) => {
-                if (t === vkv) {
+        Object.keys(validTags).some((vt) => {
+            if (vt === lookupValue) {
+                // Prevent empty strings from being written
+                if (validTags[vt] && config[tagKey].values[foundRefValue]) {
                     //Found the matched reference value
-                    foundRefValue = validTags[vkv].toLowerCase();
+                    let foundRefValue = validTags[vt];
                     tagValue = config[tagKey].values[foundRefValue];
-                    //tagsToWrite[tagKey] = config[tagKey].values[foundRefValue];
-                    return true;
                 }
-            });
+                return true;
+            }
         });
 
         if (!foundRefValue) {

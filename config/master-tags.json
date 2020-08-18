@@ -30,7 +30,7 @@
             "mscripts"
         ]
     },
-    "costCenter": {
+    "costcenter": {
         "validKeyNames": ["costcenter"],
         "values": {
             "apa": "6110000040",

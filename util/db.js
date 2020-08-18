@@ -2,7 +2,7 @@ const AWS = require("aws-sdk");
 const CONSTANTS = require("./constants");
 AWS.config.update({ region: "us-east-1" });
 const docClient = new AWS.DynamoDB.DocumentClient();
-const { logger } = require("../util/logger");
+const logger = require("../util/logger").init();
 
 const scanDynamoDB = (tableName, filterExpression, expressionAttributeNames, expressionAttributeValues) => {
     return new Promise((resolve, reject) => {
@@ -20,10 +20,10 @@ const scanDynamoDB = (tableName, filterExpression, expressionAttributeNames, exp
             if (err) {
                 logger.error("unable to scan. Error:", JSON.stringify(err, null, 2));
             } else {
-                logger.log(`scan returned ${data.Items.length} items...`);
+                logger.info(`scan returned ${data.Items.length} items...`);
                 dataItems = [].concat(dataItems, data.Items);
                 if (data.LastEvaluatedKey) {
-                    logger.log("more items exist, scanning more...");
+                    logger.info("more items exist, scanning more...");
                     queryParams.ExclusiveStartKey = data.LastEvaluatedKey;
                     docClient.scan(queryParams, onScan);
                 } else {
@@ -59,13 +59,13 @@ const deleteDynamoDBRecord = (tableName, key) => {
             Key: key,
         };
 
-        //logger.log("Attempting to delete record...");
+        //logger.info("Attempting to delete record...");
         docClient.delete(params, (err, data) => {
             if (err) {
                 logger.error(`Unable to delete record. Error: ${JSON.stringify(err, null, 2)}`);
                 reject();
             } else {
-                //logger.log("Delete succeeded");
+                //logger.info("Delete succeeded");
                 resolve();
             }
         });
@@ -74,7 +74,7 @@ const deleteDynamoDBRecord = (tableName, key) => {
 
 const addDynamoDBRecord = (tableName, item) => {
     return new Promise((resolve, reject) => {
-        //logger.log("Writing DB record");
+        //logger.info("Writing DB record");
         let params = {
             TableName: tableName,
             Item: item,
@@ -85,7 +85,7 @@ const addDynamoDBRecord = (tableName, item) => {
                 logger.error(`Unable to add record. Error: ${JSON.stringify(err, null, 2)}`);
                 reject();
             } else {
-                //logger.log("Record added");
+                //logger.info("Record added");
                 resolve();
             }
         });
