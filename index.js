@@ -22,9 +22,10 @@ clearAndLoadConfig()
         logger.info("Enforcing resource tags...");
         return enforceTagsFromAnalysis();
     })
+    .then(() => {
+        logger.info("Successfully processed tags");
+        process.exit(0);
+    })
     .catch((err) => {
         logger.error(`error processing tags: ${err}`);
-    })
-    .finally(() => {
-        logger.info("Successfully processed tags");
     });

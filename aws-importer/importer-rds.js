@@ -87,11 +87,11 @@ const getRDSInstancesFromAWS = () => {
                             }
                         });
                     });
-                    logger.info(`\nTags fetched successfully`);
+                    logger.info(`Tags fetched successfully`);
                     resolve(rdsInstances);
                 })
                 .catch((err) => {
-                    logger.error(`\nError getting RDS tags from AWS. Error: ${err.message}`);
+                    logger.error(`Error getting RDS tags from AWS. Error: ${err.message}`);
                 });
         });
     });

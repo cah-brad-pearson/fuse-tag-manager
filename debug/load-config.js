@@ -1,8 +1,9 @@
-const configLoader = require("config/load-config");
+const { clearAndLoadConfig } = require("../config/load-config");
 
-configLoader()
+clearAndLoadConfig()
     .then(() => {
         console.log("config loader complete");
+        process.exit(0);
     })
     .catch((err) => {
         console.error("error running config loader");

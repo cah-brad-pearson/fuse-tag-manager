@@ -34,18 +34,18 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
     // lookupValue: lookup the value by using the value of the associated key as the key of this config object's value object
     // alwaysPopulate: always populate the tag with either the given value or an empty string
 
-    let tagValue = "";
+    let tagValue;
 
     // Populate the value of the key with the name of the key since it doesn't matter. We just want to have some value
     if (config[tagKey].alwaysPopulate) {
-        tagValue = config[tagKey];
+        tagValue = tagKey;
     } else if (config[tagKey].copyValue) {
         let keyToCopyFrom = config[tagKey].copyValue;
 
         // Only copy it from a valid, matched tag
         let foundCopyFromValue = false;
         Object.keys(validTags).some((t) => {
-            if (tagKey === t && validTags[t]) {
+            if (keyToCopyFrom === t && validTags[t]) {
                 tagValue = validTags[t];
                 foundCopyFromValue = true;
                 return true;
@@ -59,17 +59,20 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
         }
     } else if (config[tagKey].lookupValue) {
         let lookupValue = config[tagKey].lookupValue;
+        let foundRefValue;
 
         // Only allow a reference to a matched, valid tag
         Object.keys(validTags).some((vt) => {
             if (vt === lookupValue) {
                 // Prevent empty strings from being written
-                if (validTags[vt] && config[tagKey].values[foundRefValue]) {
-                    //Found the matched reference value
-                    let foundRefValue = validTags[vt];
-                    tagValue = config[tagKey].values[foundRefValue];
+                if (validTags[vt]) {
+                    let lookupValue = validTags[vt];
+                    if (config[tagKey].values[lookupValue]) {
+                        //Found the matched reference value
+                        tagValue = config[tagKey].values[lookupValue];
+                        return true;
+                    }
                 }
-                return true;
             }
         });
 

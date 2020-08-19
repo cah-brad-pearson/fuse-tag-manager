@@ -30,7 +30,7 @@ const getDynamoAWSObjects = () => {
 
 async function analyzeTagInfo(taggedObjects) {
     const resolveNormalizedTagKey = (tagKey, config) => {
-        if (config[tagKey]) return config[tagKey];
+        if (config[tagKey]) return tagKey;
 
         let resolvedTagKey;
         // Find the correct config key name
@@ -121,7 +121,7 @@ async function analyzeTagInfo(taggedObjects) {
 
                 currTaggedObj.Tags.forEach((resourceTag) => {
                     // Check if this value for the tag is valid, invalid or not found as an enforced tag
-                    let normalizedTagKey = resolveNormalizedTagKey(resourceTag.Key);
+                    let normalizedTagKey = resolveNormalizedTagKey(resourceTag.Key, tagConfig);
                     let tagStatus = getTagStatus(
                         currTaggedObj,
                         normalizedTagKey,
@@ -147,7 +147,7 @@ async function analyzeTagInfo(taggedObjects) {
                 let requiredTags = Object.keys(tagConfig).filter((k) => k !== CONSTANTS.PRIMARY_KEY_NAME);
 
                 requiredTags.forEach((reqTag) => {
-                    let normalizedTagKey = resolveNormalizedTagKey(reqTag);
+                    let normalizedTagKey = resolveNormalizedTagKey(reqTag, tagConfig);
                     let validKeys = tagConfig[reqTag][CONSTANTS.VALID_KEY_NAMES];
                     let keyFound = validKeys.some((vk) => {
                         return currTaggedObj.Tags.some((currTag) => currTag.Key.toLowerCase() === vk.toLowerCase());
