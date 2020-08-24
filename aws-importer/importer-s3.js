@@ -73,7 +73,7 @@ const getS3BucketsFromAWS = () => {
             });
         };
 
-        logger.info(`Getting S3 bucket data from AWS...`);
+        logger.info(`getting S3 bucket data from AWS...`);
 
         getS3Buckets()
             .then((buckets) => {

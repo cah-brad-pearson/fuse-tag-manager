@@ -57,7 +57,7 @@ const getRDSInstancesFromAWS = () => {
             });
         };
 
-        logger.info(`Getting RDS data from AWS...`);
+        logger.info(`getting RDS data from AWS...`);
         getDBInstances().then(() => {
             logger.info(`${rdsInstances.length} RDS instances fetched from AWS`);
             // // Get the tags for each RDS instance
@@ -71,7 +71,7 @@ const getRDSInstancesFromAWS = () => {
                 );
             });
 
-            logger.info(`Getting tag records for RDS instances from AWS...`);
+            logger.info(`getting tag records for RDS instances from AWS...`);
 
             Promise.all(tagPromises)
                 .then((results) => {

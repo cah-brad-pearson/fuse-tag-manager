@@ -104,7 +104,7 @@ async function analyzeTagInfo(taggedObjects) {
             // Build a list of the enforced tags
             logger.info(`Iterating over ${taggedObjects.length} objects...`);
             let objCount = 0;
-            taggedObjects.slice(0, 100).forEach((currTaggedObj) => {
+            taggedObjects.forEach((currTaggedObj) => {
                 objCount++;
                 const objTagAnalysis = {
                     matchedTags: {}, // enforced and value is valid

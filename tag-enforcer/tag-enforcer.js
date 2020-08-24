@@ -4,6 +4,7 @@ const AWS = require("aws-sdk");
 
 const ec2 = new AWS.EC2({ apiVersion: "2016-11-15" });
 const s3 = new AWS.S3();
+const rds = new AWS.RDS();
 const logger = require("../util/logger").init();
 const { tagValueFinder, hasPopulationInstruction } = require("../util/tag-value-finder");
 
@@ -23,6 +24,7 @@ const writeTagsToResource = (resourceId, resourceType, tagSet) =>
 
         switch (resourceType) {
             case CONSTANTS.EC2_OBJECT_TYPE:
+            case CONSTANTS.EBS_OBJECT_TYPE:
                 // EC2 and ebs volumes
                 ec2.createTags(params, (err, data) => {
                     err && reject(err.message);
@@ -41,15 +43,19 @@ const writeTagsToResource = (resourceId, resourceType, tagSet) =>
                     resolve(data);
                 });
                 break;
+            case CONSTANTS.RDS_OBJECT_TYPE:
+                let rdsParams = {
+                    ResourceName: resourceId,
+                    Tags: tagArr,
+                };
+                rds.addTagsToResource(rdsParams, (err, data) => {
+                    err && reject(err.message);
+                    resolve(data);
+                });
+                break;
             default:
                 reject(new Error(`${resourceType} not yet supported`));
         }
-
-        // rds.addTagsToResource(params, function (err, data) {
-        //     if (err) logger.info(err, err.stack);
-        //     // an error occurred
-        //     else logger.info(data); // successful response
-        // });
     });
 
 const getResourcesWithoutProductTags = (analysisRecords) => {
@@ -142,8 +148,7 @@ const enforceTagsFromAnalysis = () =>
                             allAnalysis.push(analysisObj);
                             break;
                         case CONSTANTS.RDS_OBJECT_TYPE:
-                            analysisObj.instanceIdentifier = rec.taggedObj.DBInstanceIdentifier;
-                            analysisObj.resourceIdentifier = rec.taggedObj.DBInstanceIdentifier;
+                            analysisObj.resourceIdentifier = rec.taggedObj.DBInstanceArn;
                             analysisObj.objectType = CONSTANTS.RDS_OBJECT_TYPE;
                             //allAnalysis[CONSTANTS.RDS_OBJECT_TYPE].push({ ...analysisObj });
                             allAnalysis.push(analysisObj);

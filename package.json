@@ -1,25 +1,25 @@
 {
-  "name": "fuse-tag-manager",
-  "version": "0.0.1",
-  "description": "Tag manager for coredm",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "delete-deployment": "rm build/deployment.zip",
-    "add-node-source": "zip -r -j build/deployment.zip aws-importer/*",
-    "add-node-modules": "zip -r -u build/deployment.zip node_modules/*",
-    "build-importer": "npm run delete-deployment && npm run add-node-source && npm run add-node-modules",
-    "deploy-importer": "aws s3 cp ./build/deployment.zip s3://fuse-lambda-source-code/fuse-tag-manager-importer/deployment.zip",
-    "build-and-deploy": "npm run build-importer && npm run deploy-importer"
-  },
-  "author": "Brad Pearson",
-  "license": "ISC",
-  "dependencies": {
-    "aws-sdk": "^2.716.0",
-    "p-limit": "^3.0.2",
-    "p-map": "^4.0.0",
-    "p-throttle": "^3.1.0",
-    "simple-node-logger": "^18.12.24",
-    "uuid": "^8.2.0"
-  }
+    "name": "fuse-tag-manager",
+    "version": "0.0.1",
+    "description": "Tag manager for coredm",
+    "main": "index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "delete-deployment": "rm build/fuse-tag-manager.zip",
+        "add-node-source": "zip -r -u build/fuse-tag-manager.zip aws-importer/* config/* tag-analyzer/* tag-enforcer/* util/* index.js",
+        "add-node-modules": "zip -r -u build/fuse-tag-manager.zip node_modules/*",
+        "build-package": "npm run delete-deployment && npm run add-node-source && npm run add-node-modules",
+        "copy-to-s3": "aws s3 cp ./build/fuse-tag-manager.zip s3://cah-coredm-temp/brad/fuse-tag-manager/fuse-tag-manager.zip",
+        "build-and-copy": "npm run build-package && npm run copy-to-s3"
+    },
+    "author": "Brad Pearson",
+    "license": "ISC",
+    "dependencies": {
+        "aws-sdk": "^2.716.0",
+        "p-limit": "^3.0.2",
+        "p-map": "^4.0.0",
+        "p-throttle": "^3.1.0",
+        "simple-node-logger": "^18.12.24",
+        "uuid": "^8.2.0"
+    }
 }

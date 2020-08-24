@@ -6,13 +6,13 @@ const logger = require("../util/logger").init();
 
 let clearConfig = () => {
     let key = { _pk: CONSTANTS.CONFIG_PK };
-    logger.info("Attempting to delete previous config...");
+    logger.info("attempting to delete previous config...");
     return deleteDynamoDBRecord(CONSTANTS.TABLE_NAME, key);
 };
 
 let createConfig = () => {
     // recreate new config
-    logger.info("Importing config data into DynamoDB...");
+    logger.info("importing config data into DynamoDB...");
     const configData = JSON.parse(fs.readFileSync("config/master-tags.json", "utf8"));
 
     let configRecord = { _pk: CONSTANTS.CONFIG_PK };
