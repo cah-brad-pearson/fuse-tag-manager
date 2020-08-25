@@ -6,6 +6,8 @@ const { enforceTagsFromAnalysis } = require("./tag-enforcer/tag-enforcer");
 const logger = require("./util/logger").init();
 
 logger.info("Loading config...");
+logger.setLevel("debug");
+
 clearAndLoadConfig()
     .then(() => {
         logger.info("Config loading complete!");

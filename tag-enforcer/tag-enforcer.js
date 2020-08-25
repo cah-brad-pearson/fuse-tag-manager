@@ -1,6 +1,7 @@
-const { scanDynamoDB, getConfig, writeRecordsToDynamoDB } = require("../util/db");
+const { scanDynamoDB, getConfig, writeRecordsToDynamoDB, deleteDynamoDBRecord } = require("../util/db");
 const CONSTANTS = require("../util/constants");
 const AWS = require("aws-sdk");
+const plimit = require("p-limit");
 
 const ec2 = new AWS.EC2({ apiVersion: "2016-11-15" });
 const s3 = new AWS.S3();
@@ -13,7 +14,13 @@ let filterExpression = "begins_with(#pk, :analysis_type)";
 let expressionAttributeNames = { "#pk": "_pk" };
 let expressionAttributeValues = { ":analysis_type": CONSTANTS.ANALYSIS_OBJECT_TYPE };
 
-const writeTagsToResource = (resourceId, resourceType, tagSet) =>
+const delayedResponse = (delay, fnToRun) => {
+    setTimeout(() => {
+        fnToRun();
+    }, delay);
+};
+
+const writeTagsToResource = (resourceId, resourceType, tagSet, delayToReport = 200) =>
     new Promise((resolve, reject) => {
         // Convert tag set to valid api format
         let tagArr = Object.keys(tagSet).map((key) => ({ Key: key, Value: tagSet[key] ? tagSet[key] : "" }));
@@ -22,13 +29,21 @@ const writeTagsToResource = (resourceId, resourceType, tagSet) =>
             Tags: tagArr,
         };
 
+        logger.debug(`starting tag creation promise for ${resourceType} ${resourceId}`);
         switch (resourceType) {
             case CONSTANTS.EC2_OBJECT_TYPE:
             case CONSTANTS.EBS_OBJECT_TYPE:
                 // EC2 and ebs volumes
                 ec2.createTags(params, (err, data) => {
-                    err && reject(err.message);
-                    resolve(data);
+                    err &&
+                        delayedResponse(delayToReport, () => {
+                            reject(err.message);
+                        });
+
+                    delayedResponse(delayToReport, () => {
+                        logger.debug(`completed tag creation promise for ${resourceType} ${resourceId}`);
+                        resolve(data);
+                    });
                 });
                 break;
             case CONSTANTS.S3_OBJECT_TYPE:
@@ -39,8 +54,15 @@ const writeTagsToResource = (resourceId, resourceType, tagSet) =>
                     },
                 };
                 s3.putBucketTagging(s3Params, (err, data) => {
-                    err && reject(err.message);
-                    resolve(data);
+                    err &&
+                        delayedResponse(delayToReport, () => {
+                            reject(err.message);
+                        });
+
+                    delayedResponse(delayToReport, () => {
+                        logger.debug(`completed tag creation promise for ${resourceType} ${resourceId}`);
+                        resolve(data);
+                    });
                 });
                 break;
             case CONSTANTS.RDS_OBJECT_TYPE:
@@ -49,8 +71,15 @@ const writeTagsToResource = (resourceId, resourceType, tagSet) =>
                     Tags: tagArr,
                 };
                 rds.addTagsToResource(rdsParams, (err, data) => {
-                    err && reject(err.message);
-                    resolve(data);
+                    err &&
+                        delayedResponse(delayToReport, () => {
+                            reject(err.message);
+                        });
+
+                    delayedResponse(delayToReport, () => {
+                        logger.debug(`completed tag creation promise for ${resourceType} ${resourceId}`);
+                        resolve(data);
+                    });
                 });
                 break;
             default:
@@ -194,10 +223,11 @@ const enforceTagsFromAnalysis = () =>
                     logger.info(`Tagging aws resources...`);
 
                     let tagPromises = [];
+                    const limit = plimit(1);
                     newTagsToWrite.forEach((resource) => {
                         //let keys = Object.keys(resource);
 
-                        let tagPromise = new Promise((resolve) => {
+                        const tagPromise = limit(() => {
                             return writeTagsToResource(resource.resourceId, resource.resourceType, resource.tagsToWrite)
                                 .then(() => {
                                     logger.info(
@@ -209,8 +239,9 @@ const enforceTagsFromAnalysis = () =>
                                 })
                                 .catch((err) => {
                                     logger.error(
-                                        `error processing ${resource.resourceType} resource ${resource.resourceId}: ${err.message}`
+                                        `error processing ${resource.resourceType} resource ${resource.resourceId}: ${err}`
                                     );
+                                    resolve();
                                 });
                         });
 

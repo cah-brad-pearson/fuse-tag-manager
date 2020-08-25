@@ -16,7 +16,7 @@ const clearAndFetchEBSVolumes = () => {
 
             // Clear old EC2 records from dynamo table
             if (ebsDynamoRecords.length > 0) {
-                logger.info(`deleting ${ebsDynamoRecords.length} records...`);
+                logger.info(`deleting ${ebsDynamoRecords.length} records...`)
                 await deleteRecordsByPK(
                     CONSTANTS.TABLE_NAME,
                     ebsDynamoRecords.map((ebr) => ebr[CONSTANTS.PRIMARY_KEY_NAME])

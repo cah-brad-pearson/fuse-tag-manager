@@ -34,7 +34,7 @@ const clearAndFetchRDSInstances = () => {
 };
 
 const getRDSInstancesFromAWS = () => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         let rdsInstances = [];
         const params = {};
 
@@ -64,14 +64,10 @@ const getRDSInstancesFromAWS = () => {
             const tagPromises = [];
             const limit = pLimit(1);
             rdsInstances.forEach((ins) => {
-                tagPromises.push(
-                    limit(() => {
-                        return getTagsFromRDSInstance(ins.DBInstanceArn);
-                    })
-                );
+                tagPromises.push(limit(() => getTagsFromRDSInstance(ins.DBInstanceArn)));
             });
 
-            logger.info(`getting tag records for RDS instances from AWS...`);
+            logger.info(`getting tag records for RDS ${rdsInstances.length} instances from AWS...`);
 
             Promise.all(tagPromises)
                 .then((results) => {
@@ -88,32 +84,37 @@ const getRDSInstancesFromAWS = () => {
                         });
                     });
                     logger.info(`Tags fetched successfully`);
-                    resolve(rdsInstances);
                 })
                 .catch((err) => {
                     logger.error(`Error getting RDS tags from AWS. Error: ${err.message}`);
+                })
+                .finally(() => {
+                    resolve(rdsInstances);
                 });
         });
     });
 };
 
-const getTagsFromRDSInstance = (resourceName) => {
-    return new Promise((resolve, reject) => {
+const getTagsFromRDSInstance = (resourceName, delayToReport = 200) =>
+    new Promise((resolve, reject) => {
         var params = {
             ResourceName: resourceName,
         };
 
+        logger.debug(`starting RDS tag promise for ${resourceName}`);
         rds.listTagsForResource(params, (err, data) => {
             if (err) {
                 reject(err);
             }
             // an error occurred
             else {
-                resolve({ resourceName, Tags: data.TagList }); // successful response
+                setTimeout(() => {
+                    logger.debug(`finished RDS tag promise for ${resourceName}. ${data.TagList.length} tags fetched`);
+                    resolve({ resourceName, Tags: data.TagList });
+                }, delayToReport);
             }
         });
     });
-};
 
 const getDynamoRDSInstances = () => {
     let filterExpression = "begins_with(#pk, :rds_type)";
