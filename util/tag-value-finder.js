@@ -25,7 +25,29 @@ const hasPopulationInstruction = (tagKey, config) => {
     return configTagObj.alwaysPopulate || configTagObj.copyValue || configTagObj.lookupValue;
 };
 
-// All tag values are assumed to be normalized and found in the list of config keys
+// Because tags can match on multiple key names
+const keysMatch = (config, tagKey, tagKeyToMatch) => {
+    // for the normalized key matching (when the tag key has been translated into the correct config key value)
+    if (config[tagKey] && tagKey === tagKeyToMatch) {
+        return true;
+    } else {
+        //find the tagKey in the config list and try to match the keyToMatch to one of the alternate names
+        let configOb = config[tagKey];
+        let keyFound = false;
+
+        keyFound = configOb[CONSTANTS.VALID_KEY_NAMES].some((vk) => {
+            if (vk.toLowerCase() === tagKeyToMatch.toLowerCase()) {
+                keyFound = true;
+                return true;
+            }
+        });
+
+        return keyFound;
+    }
+
+    return false;
+};
+
 const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config) => {
     // TODO: add in functionality to lookup a value from a map as well as an array
     // In order to derive the correct value for the tag, we need to have an instruction on the config
@@ -45,7 +67,7 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
         // Only copy it from a valid, matched tag
         let foundCopyFromValue = false;
         Object.keys(validTags).some((t) => {
-            if (keyToCopyFrom === t && validTags[t]) {
+            if (keysMatch(config, keyToCopyFrom, t)) {
                 tagValue = validTags[t];
                 foundCopyFromValue = true;
                 return true;
@@ -63,7 +85,7 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
 
         // Only allow a reference to a matched, valid tag
         Object.keys(validTags).some((vt) => {
-            if (vt === lookupValue) {
+            if (keysMatch(config, lookupValue, vt)) {
                 // Prevent empty strings from being written
                 if (validTags[vt]) {
                     let lookupValue = validTags[vt];

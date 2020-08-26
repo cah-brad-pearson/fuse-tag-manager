@@ -21,7 +21,7 @@ const delayedResponse = (delay, fnToRun) => {
 };
 
 const writeTagsToResource = (resourceId, resourceType, tagSet, delayToReport = 200) =>
-    new Promise((resolve, reject) => {
+    new Promise((resolve) => {
         // Convert tag set to valid api format
         let tagArr = Object.keys(tagSet).map((key) => ({ Key: key, Value: tagSet[key] ? tagSet[key] : "" }));
         let params = {
@@ -37,11 +37,19 @@ const writeTagsToResource = (resourceId, resourceType, tagSet, delayToReport = 2
                 ec2.createTags(params, (err, data) => {
                     err &&
                         delayedResponse(delayToReport, () => {
-                            reject(err.message);
+                            logger.error(`error processing ${resourceType} resource ${resourceId}: ${err.message}`);
+                            resolve();
                         });
 
                     delayedResponse(delayToReport, () => {
                         logger.debug(`completed tag creation promise for ${resourceType} ${resourceId}`);
+                        logger.info(
+                            `successfully tagged ${resourceType} resource ${resourceId} with ${JSON.stringify(
+                                tagArr,
+                                null,
+                                1
+                            )}`
+                        );
                         resolve(data);
                     });
                 });
@@ -56,11 +64,19 @@ const writeTagsToResource = (resourceId, resourceType, tagSet, delayToReport = 2
                 s3.putBucketTagging(s3Params, (err, data) => {
                     err &&
                         delayedResponse(delayToReport, () => {
-                            reject(err.message);
+                            logger.error(`error processing ${resourceType} resource ${resourceId}: ${err.message}`);
+                            resolve();
                         });
 
                     delayedResponse(delayToReport, () => {
                         logger.debug(`completed tag creation promise for ${resourceType} ${resourceId}`);
+                        logger.info(
+                            `successfully tagged ${resourceType} resource ${resourceId} with ${JSON.stringify(
+                                tagArr,
+                                null,
+                                1
+                            )}`
+                        );
                         resolve(data);
                     });
                 });
@@ -73,17 +89,26 @@ const writeTagsToResource = (resourceId, resourceType, tagSet, delayToReport = 2
                 rds.addTagsToResource(rdsParams, (err, data) => {
                     err &&
                         delayedResponse(delayToReport, () => {
-                            reject(err.message);
+                            logger.error(`error processing ${resourceType} resource ${resourceId}: ${err.message}`);
+                            resolve();
                         });
 
                     delayedResponse(delayToReport, () => {
                         logger.debug(`completed tag creation promise for ${resourceType} ${resourceId}`);
+                        logger.info(
+                            `successfully tagged ${resourceType} resource ${resourceId} with ${JSON.stringify(
+                                tagArr,
+                                null,
+                                1
+                            )}`
+                        );
                         resolve(data);
                     });
                 });
                 break;
             default:
-                reject(new Error(`${resourceType} not yet supported`));
+                logger.error(`${resourceType} not yet supported`);
+                resolve();
         }
     });
 
@@ -227,23 +252,9 @@ const enforceTagsFromAnalysis = () =>
                     newTagsToWrite.forEach((resource) => {
                         //let keys = Object.keys(resource);
 
-                        const tagPromise = limit(() => {
-                            return writeTagsToResource(resource.resourceId, resource.resourceType, resource.tagsToWrite)
-                                .then(() => {
-                                    logger.info(
-                                        `successfully tagged ${resource.resourceType} resource ${
-                                            resource.resourceId
-                                        } with ${JSON.stringify(resource.tagsToWrite, null, 1)}`
-                                    );
-                                    resolve();
-                                })
-                                .catch((err) => {
-                                    logger.error(
-                                        `error processing ${resource.resourceType} resource ${resource.resourceId}: ${err}`
-                                    );
-                                    resolve();
-                                });
-                        });
+                        const tagPromise = limit(() =>
+                            writeTagsToResource(resource.resourceId, resource.resourceType, resource.tagsToWrite)
+                        );
 
                         tagPromises.push(tagPromise);
                     });
