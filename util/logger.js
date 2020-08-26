@@ -1,5 +1,10 @@
 const SimpleNodeLogger = require("simple-node-logger");
 
+const LOG_LEVELS = {
+    DEBUG: "debug",
+    INFO: "info",
+};
+
 let logger;
 const timestampFormat = "YYYY-MM-DD[T]HH:mm:ss.SSS";
 
@@ -21,4 +26,4 @@ const init = () => {
     return logger;
 };
 
-module.exports.init = init;
+module.exports = { init, logLevels: LOG_LEVELS };
