@@ -19,6 +19,7 @@
     "p-limit": "^3.0.2",
     "p-map": "^4.0.0",
     "p-throttle": "^3.1.0",
+    "simple-node-logger": "^18.12.24",
     "uuid": "^8.2.0"
   }
 }

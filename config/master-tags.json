@@ -1,24 +1,6 @@
 {
-    "_pk": "CONFIG-1000",
-
-    "enforced_tags": [
-        "product",
-        "costCenter",
-        "function",
-        "fuse_environment",
-        "terraform",
-        "crowdstrike",
-        "team",
-        "schedule",
-        "apmid",
-        "regulatory",
-        "environment",
-        "application",
-        "applicationGroup"
-    ],
     "product": {
-        "key": "fuse:product",
-        "alternate_key": "fuse_product",
+        "validKeyNames": ["fuse:product", "fuse_product"],
         "values": [
             "apa",
             "care",
@@ -49,7 +31,7 @@
         ]
     },
     "costCenter": {
-        "key": "costcenter",
+        "validKeyNames": ["costcenter"],
         "values": {
             "apa": "6110000040",
             "care": "2220001043",
@@ -77,11 +59,11 @@
             "vandelay": "5040000833",
             "vitalpath": "6110000045",
             "mscripts": "8290000016"
-        }
+        },
+        "lookupValue": "product"
     },
     "function": {
-        "key": "fuse:function",
-        "alternate_key": "fuse_function",
+        "validKeyNames": ["fuse:function", "fuse_function"],
         "values": [
             "foundation",
             "flux-management",
@@ -112,63 +94,63 @@
         ]
     },
     "fuse_environment": {
-        "key": "fuse:environment",
-        "alternate_key": "fuse_environment",
+        "validKeyNames": ["fuse_environment", "fuse:environment"],
         "values": ["dev", "nonprod", "prod"]
     },
     "terraform": {
-        "key": "fuse:terraform",
-        "alternate_key": "fuse_terraform",
+        "validKeyNames": ["fuse_terraform", "fuse:terraform"],
         "values": []
     },
     "crowdstrike": {
-        "key": "fuse:crowdstrike",
-        "alternate_key": "fuse_crowdstrike",
+        "validKeyNames": ["fuse_crowdstrike", "fuse:crowdstrike"],
         "values": ["true", "false", "na", "v3"]
     },
-    "team": { "key": "fuse:team", "alternate_key": "fuse_team", "values": [] },
-    "schedule": { "key": "fuse:schedule", "alternate_key": "fuse_schedule", "values": [] },
+    "team": { "validKeyNames": ["fuse_team", "fuse:team"], "values": [] },
+    "schedule": { "validKeyNames": ["fuse_schedule", "fuse:schedule"], "values": [] },
     "apmid": {
-        "key": "apmid",
+        "validKeyNames": ["apmid"],
         "values": {
-            "apa": "6110000040",
-            "care": "2220001043",
-            "biopharma_reporting": "6110000041",
-            "dash": "6110000042",
-            "datalab": "2220001042",
-            "dcoa": "5040000803",
-            "digital_twin": "1120000251",
-            "foundational": "1120000217",
-            "fuse": "1120000217",
-            "griiip": "2220001042",
+            "apa": "14119",
+            "care": "14294",
+            "biopharma_reporting": "14225",
+            "dash": "",
+            "datalab": "26549",
+            "dcoa": "6075",
+            "digital_twin": "",
+            "foundational": "",
+            "fuse": "",
+            "griiip": "",
             "gryphon": "",
-            "innovation": "2220001042",
+            "innovation": "",
             "inpower": "",
             "libra": "",
-            "moms": "5040000804",
-            "npwt": "2140003270",
-            "outcomes": "7340000011",
-            "proxihub": "2220001158",
-            "raid": "2220001042",
-            "rcs": "2220001043",
-            "regimen_analyzer": "6110000061",
-            "rxid": "6110000071",
-            "telepharm": "7740000010",
-            "vandelay": "5040000833",
-            "vitalpath": "6110000045",
-            "mscripts": "8290000016"
-        }
+            "moms": "6088",
+            "npwt": "2244",
+            "outcomes": "20132",
+            "proxihub": "26547",
+            "raid": "",
+            "rcs": "13254",
+            "regimen_analyzer": "12753",
+            "rxid": "22417",
+            "telepharm": "25667",
+            "vandelay": "20134",
+            "vitalpath": "12807",
+            "mscripts": ""
+        },
+        "lookupValue": "product"
     },
     "regulatory": {
-        "key": "regulatory",
-        "values": []
+        "validKeyNames": ["regulatory"],
+        "values": [],
+        "alwaysPopulate": true
     },
     "environment": {
-        "key": "environment",
-        "values": ["prod", "nonprod", "dev"]
+        "validKeyNames": ["environment"],
+        "values": ["prod", "nonprod", "dev"],
+        "copyValue": "fuse_environment"
     },
     "application": {
-        "key": "application",
+        "validKeyNames": ["application"],
         "values": [
             "apa",
             "care",
@@ -196,10 +178,11 @@
             "vandelay",
             "vitalpath",
             "mscripts"
-        ]
+        ],
+        "copyValue": "product"
     },
     "applicationGroup": {
-        "key": "applicationgroup",
+        "validKeyNames": ["applicationgroup"],
         "values": {
             "apa": "EIT-SpecialtyPracticeAnalytics",
             "care": "EIT-PS-SpecialtySupport",
@@ -226,6 +209,7 @@
             "vandelay": "FUSE-DATALAKE",
             "vitalpath": "IMS",
             "mscripts": ""
-        }
+        },
+        "lookupValue": "product"
     }
 }

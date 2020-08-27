@@ -14,7 +14,7 @@ let createConfig = () => {
     console.log("Importing config data into DynamoDB...");
     const configData = JSON.parse(fs.readFileSync("config/master-tags.json", "utf8"));
 
-    let configRecord = {};
+    let configRecord = { _pk: CONSTANTS.CONFIG_PK };
 
     // Loop through the keys of the config object and add the keys and values
     Object.keys(configData).forEach((k) => {

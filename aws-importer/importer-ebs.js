@@ -1,5 +1,5 @@
 const AWS = require("aws-sdk");
-const { addDynamoDBRecord, scanDynamoDB } = require("../util/db");
+const { scanDynamoDB, deleteRecordsByPK } = require("../util/db");
 const util = require("util");
 const CONSTANTS = require("../util/constants");
 const { v4: uuidv4 } = require("uuid");
@@ -30,7 +30,7 @@ const clearAndFetchEBSVolumes = () => {
             console.log(`${ebsVolumes.length} volumes found`);
             resolve(ebsVolumes);
         } catch (error) {
-            reject(`Error deleting and fetching EBS volume records. Error ${JSON.stringify(error)}`);
+            reject(`Error deleting and fetching EBS volume records: ${error.message}`);
         }
     });
 };
