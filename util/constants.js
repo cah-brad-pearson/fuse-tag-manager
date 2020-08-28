@@ -8,7 +8,7 @@ const constants_to_export = {
     LOG_OBJECT_TYPE: "LOG",
     ANALYSIS_OBJECT_TYPE: "ANALYSIS",
     CONFIG_PK: "CONFIG-1000",
-    VALID_KEY_NAMES: "validKeyNames",
+    VALID_KEY_NAMES: "validKeyNames"
 };
 
 module.exports = constants_to_export;

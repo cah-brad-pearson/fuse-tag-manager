@@ -1,4 +1,4 @@
-const { logger } = require("./logger");
+const logger = require("./logger").init();
 const CONSTANTS = require("./constants");
 
 const hasPopulationInstruction = (tagKey, config) => {
@@ -25,44 +25,53 @@ const hasPopulationInstruction = (tagKey, config) => {
     return configTagObj.alwaysPopulate || configTagObj.copyValue || configTagObj.lookupValue;
 };
 
+// Because tags can match on multiple key names
+const keysMatch = (config, tagKey, tagKeyToMatch) => {
+    // for the normalized key matching (when the tag key has been translated into the correct config key value)
+    if (config[tagKey] && tagKey === tagKeyToMatch) {
+        return true;
+    } else {
+        //find the tagKey in the config list and try to match the keyToMatch to one of the alternate names
+        let configOb = config[tagKey];
+        let keyFound = false;
+
+        keyFound = configOb[CONSTANTS.VALID_KEY_NAMES].some((vk) => {
+            if (vk.toLowerCase() === tagKeyToMatch.toLowerCase()) {
+                keyFound = true;
+                return true;
+            }
+        });
+
+        return keyFound;
+    }
+
+    return false;
+};
+
 const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config) => {
+    // TODO: add in functionality to lookup a value from a map as well as an array
     // In order to derive the correct value for the tag, we need to have an instruction on the config
     // tag to tell us what to do. The current instructions are:
     // copyValue: copy the value of the tag from one of the tags in the list. The first match wins
     // lookupValue: lookup the value by using the value of the associated key as the key of this config object's value object
     // alwaysPopulate: always populate the tag with either the given value or an empty string
 
-    let tagValue = "";
+    let tagValue;
 
-    if (!config[tagKey]) {
-        // Find the correct config key name
-        Object.keys(config).some((configKey) => {
-            return config[configKey][CONSTANTS.VALID_KEY_NAMES].some((vkv) => {
-                if (vkv === tagKey) {
-                    tagKey = configKey;
-                    return true;
-                }
-            });
-        });
-    }
-
+    // Populate the value of the key with the name of the key since it doesn't matter. We just want to have some value
     if (config[tagKey].alwaysPopulate) {
-        tagValue = "";
+        tagValue = tagKey;
     } else if (config[tagKey].copyValue) {
         let keyToCopyFrom = config[tagKey].copyValue;
-        let vkvs = config[keyToCopyFrom][CONSTANTS.VALID_KEY_NAMES];
 
         // Only copy it from a valid, matched tag
         let foundCopyFromValue = false;
         Object.keys(validTags).some((t) => {
-            return vkvs.some((v) => {
-                if (v.toLowerCase() === t.toLowerCase()) {
-                    //tagsToWrite[tagKey] = analysisRecord.matchedTags[t];
-                    tagValue = validTags[t];
-                    foundCopyFromValue = true;
-                    return true;
-                }
-            });
+            if (keysMatch(config, keyToCopyFrom, t)) {
+                tagValue = validTags[t];
+                foundCopyFromValue = true;
+                return true;
+            }
         });
 
         if (!foundCopyFromValue) {
@@ -73,17 +82,20 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
     } else if (config[tagKey].lookupValue) {
         let lookupValue = config[tagKey].lookupValue;
         let foundRefValue;
+
         // Only allow a reference to a matched, valid tag
-        config[lookupValue][CONSTANTS.VALID_KEY_NAMES].some((t) => {
-            return Object.keys(validTags).some((vkv) => {
-                if (t === vkv) {
-                    //Found the matched reference value
-                    foundRefValue = validTags[vkv].toLowerCase();
-                    tagValue = config[tagKey].values[foundRefValue];
-                    //tagsToWrite[tagKey] = config[tagKey].values[foundRefValue];
-                    return true;
+        Object.keys(validTags).some((vt) => {
+            if (keysMatch(config, lookupValue, vt)) {
+                // Prevent empty strings from being written
+                if (validTags[vt]) {
+                    let lookupValue = validTags[vt];
+                    if (config[tagKey].values[lookupValue]) {
+                        //Found the matched reference value
+                        tagValue = config[tagKey].values[lookupValue];
+                        return true;
+                    }
                 }
-            });
+            }
         });
 
         if (!foundRefValue) {

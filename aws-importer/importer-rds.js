@@ -2,6 +2,7 @@ const AWS = require("aws-sdk");
 const rds = new AWS.RDS();
 const pLimit = require("p-limit");
 const { deleteRecordsByPK } = require("../util/db");
+const logger = require("../util/logger").init();
 
 const { v4: uuidv4 } = require("uuid");
 const CONSTANTS = require("../util/constants");
@@ -10,17 +11,17 @@ const { scanDynamoDB } = require("../util/db");
 
 const clearAndFetchRDSInstances = () => {
     return new Promise(async (resolve, reject) => {
-        console.log(`querying DB for RDS records...`);
+        logger.info(`querying DB for RDS records...`);
         try {
             let rdsDynamoInstances = await getDynamoRDSInstances();
             if (rdsDynamoInstances.length > 0) {
                 // Clear old records from dynamo
-                console.log(`deleting ${rdsDynamoInstances.length} records...`);
+                logger.info(`deleting ${rdsDynamoInstances.length} records...`);
                 await deleteRecordsByPK(
                     CONSTANTS.TABLE_NAME,
                     rdsDynamoInstances.map((ins) => ins[CONSTANTS.PRIMARY_KEY_NAME])
                 );
-                console.log(`deleted all RDS records from the DB`);
+                logger.info(`deleted all RDS records from the DB`);
             }
 
             // Query AWS for RDS instances
@@ -33,7 +34,7 @@ const clearAndFetchRDSInstances = () => {
 };
 
 const getRDSInstancesFromAWS = () => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
         let rdsInstances = [];
         const params = {};
 
@@ -43,7 +44,7 @@ const getRDSInstancesFromAWS = () => {
                     rds.describeDBInstances(params, (err, data) => {
                         if (err) {
                             rej(err);
-                            console.log(err, err.stack);
+                            logger.info(err, err.stack);
                         } else rdsInstances = [].concat(rdsInstances, data.DBInstances);
 
                         if (data.Marker) {
@@ -56,21 +57,17 @@ const getRDSInstancesFromAWS = () => {
             });
         };
 
-        console.log(`Getting RDS data from AWS...`);
+        logger.info(`getting RDS data from AWS...`);
         getDBInstances().then(() => {
-            console.log(`${rdsInstances.length} RDS instances fetched from AWS`);
+            logger.info(`${rdsInstances.length} RDS instances fetched from AWS`);
             // // Get the tags for each RDS instance
             const tagPromises = [];
             const limit = pLimit(1);
             rdsInstances.forEach((ins) => {
-                tagPromises.push(
-                    limit(() => {
-                        return getTagsFromRDSInstance(ins.DBInstanceArn);
-                    })
-                );
+                tagPromises.push(limit(() => getTagsFromRDSInstance(ins.DBInstanceArn)));
             });
 
-            console.log(`Getting tag records for RDS instances from AWS...`);
+            logger.info(`getting tag records for RDS ${rdsInstances.length} instances from AWS...`);
 
             Promise.all(tagPromises)
                 .then((results) => {
@@ -86,33 +83,38 @@ const getRDSInstancesFromAWS = () => {
                             }
                         });
                     });
-                    console.log(`\nTags fetched successfully`);
-                    resolve(rdsInstances);
+                    logger.info(`Tags fetched successfully`);
                 })
                 .catch((err) => {
-                    console.error(`\nError getting RDS tags from AWS. Error: ${err.message}`);
+                    logger.error(`Error getting RDS tags from AWS. Error: ${err.message}`);
+                })
+                .finally(() => {
+                    resolve(rdsInstances);
                 });
         });
     });
 };
 
-const getTagsFromRDSInstance = (resourceName) => {
-    return new Promise((resolve, reject) => {
+const getTagsFromRDSInstance = (resourceName, delayToReport = 200) =>
+    new Promise((resolve, reject) => {
         var params = {
             ResourceName: resourceName,
         };
 
+        logger.debug(`starting RDS tag promise for ${resourceName}`);
         rds.listTagsForResource(params, (err, data) => {
             if (err) {
                 reject(err);
             }
             // an error occurred
             else {
-                resolve({ resourceName, Tags: data.TagList }); // successful response
+                setTimeout(() => {
+                    logger.debug(`finished RDS tag promise for ${resourceName}. ${data.TagList.length} tags fetched`);
+                    resolve({ resourceName, Tags: data.TagList });
+                }, delayToReport);
             }
         });
     });
-};
 
 const getDynamoRDSInstances = () => {
     let filterExpression = "begins_with(#pk, :rds_type)";

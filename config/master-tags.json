@@ -30,7 +30,7 @@
             "mscripts"
         ]
     },
-    "costCenter": {
+    "costcenter": {
         "validKeyNames": ["costcenter"],
         "values": {
             "apa": "6110000040",
@@ -181,7 +181,7 @@
         ],
         "copyValue": "product"
     },
-    "applicationGroup": {
+    "applicationgroup": {
         "validKeyNames": ["applicationgroup"],
         "values": {
             "apa": "EIT-SpecialtyPracticeAnalytics",
