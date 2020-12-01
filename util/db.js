@@ -86,7 +86,7 @@ const addDynamoDBRecord = (tableName, item) => {
                 reject();
             } else {
                 //logger.info("Record added");
-                resolve();
+                resolve(params);
             }
         });
     });

@@ -57,17 +57,18 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
     // alwaysPopulate: always populate the tag with either the given value or an empty string
 
     let tagValue;
+    let tagDefinitions = config["tag-definitions"];
 
     // Populate the value of the key with the name of the key since it doesn't matter. We just want to have some value
-    if (config[tagKey].alwaysPopulate) {
+    if (tagDefinitions[tagKey].alwaysPopulate) {
         tagValue = tagKey;
-    } else if (config[tagKey].copyValue) {
-        let keyToCopyFrom = config[tagKey].copyValue;
+    } else if (tagDefinitions[tagKey].copyValue) {
+        let keyToCopyFrom = tagDefinitions[tagKey].copyValue;
 
         // Only copy it from a valid, matched tag
         let foundCopyFromValue = false;
         Object.keys(validTags).some((t) => {
-            if (keysMatch(config, keyToCopyFrom, t)) {
+            if (keysMatch(tagDefinitions, keyToCopyFrom, t)) {
                 tagValue = validTags[t];
                 foundCopyFromValue = true;
                 return true;
@@ -79,19 +80,19 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
                 `Invalid copyTo reference of '${keyToCopyFrom}' for key '${tagKey}' on ${objectType} resource ${objectIdentifier}`
             );
         }
-    } else if (config[tagKey].lookupValue) {
-        let lookupValue = config[tagKey].lookupValue;
+    } else if (tagDefinitions[tagKey].lookupValue) {
+        let lookupValue = tagDefinitions[tagKey].lookupValue;
         let foundRefValue;
 
         // Only allow a reference to a matched, valid tag
         Object.keys(validTags).some((vt) => {
-            if (keysMatch(config, lookupValue, vt)) {
+            if (keysMatch(tagDefinitions, lookupValue, vt)) {
                 // Prevent empty strings from being written
                 if (validTags[vt]) {
                     let lookupValue = validTags[vt];
-                    if (config[tagKey].values[lookupValue]) {
+                    if (tagDefinitions[tagKey].values[lookupValue]) {
                         //Found the matched reference value
-                        tagValue = config[tagKey].values[lookupValue];
+                        tagValue = tagDefinitions[tagKey].values[lookupValue];
                         return true;
                     }
                 }
@@ -100,7 +101,7 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
 
         if (!foundRefValue) {
             logger.warn(
-                `Could not find a valid 'lookupValue' reference of ${config[tagKey].lookupValue} for ${objectType} resource ${objectIdentifier}`
+                `Could not find a valid 'lookupValue' reference of ${tagDefinitions[tagKey].lookupValue} for ${objectType} resource ${objectIdentifier}`
             );
         }
     } else {

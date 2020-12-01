@@ -98,7 +98,9 @@ async function analyzeTagInfo(taggedObjects) {
     return new Promise(async (resolve, reject) => {
         let tagConfig = await getConfig();
 
-        if (tagConfig) {
+        if (!Object.keys(tagConfig).length > 0) {
+            reject("config object not found")
+        }else {
             let results = [];
 
             // Build a list of the enforced tags
@@ -186,8 +188,6 @@ async function analyzeTagInfo(taggedObjects) {
                 results.push(objTagAnalysis);
             });
             resolve(results);
-        } else {
-            logger.error("couldn't find the config object from dynamodb");
         }
     });
 }

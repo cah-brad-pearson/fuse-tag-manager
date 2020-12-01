@@ -28,11 +28,9 @@ let createConfig = () => {
 const clearAndLoadConfig = () => {
     return new Promise((resolve, reject) => {
         clearConfig()
-            .then(() => {
-                createConfig();
-            })
-            .then(() => {
-                logger.info("successfully reloaded config");
+            .then(() => createConfig())
+            .then((paramsAdded) => {
+                logger.info(`successfully reloaded config with values ${JSON.stringify(paramsAdded, null, 2)}`);
                 resolve();
             })
             .catch((err) => {
