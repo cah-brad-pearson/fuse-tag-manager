@@ -5,6 +5,8 @@ const CONSTANTS = require("../util/constants.js");
 const { addDynamoDBRecord, scanDynamoDB, deleteRecordsByPK, getConfig } = require("../util/db");
 const logger = require("../util/logger").init();
 const { tagValueFinder, hasPopulationInstruction } = require("../util/tag-value-finder");
+const ec2Ebs = require("./ec2-ebs.js");
+
 const TAG_FINDER_STATUS = {
     VALID: "tagValueValid",
     INVALID: "tagValueInvalid",
@@ -28,7 +30,107 @@ const getDynamoAWSObjects = () => {
     return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
 };
 
-async function analyzeTagInfo(taggedObjects) {
+const analyzeTagAssociations = (taggedObjects) => {
+    // There should be a call to each tag association function
+    // here and we should return all records from all functions
+
+    const taggedObjCategories = categorizeTaggedObjects(taggedObjects);
+
+    // Call EBS to EC2 association function
+    let matchedPairs = ec2Ebs.matchEBSandEC2Instances(
+        taggedObjCategories[CONSTANTS.EBS_OBJECT_TYPE],
+        taggedObjCategories[CONSTANTS.EC2_OBJECT_TYPE]
+    );
+
+    // Remove product tag from unmatched or invalid arrays and add the product from the EC2 instance to the forceAdd array
+    let newAnalysisRecords = [];
+    try {
+        matchedPairs.forEach((pair) => {
+            const ebsObj = pair[CONSTANTS.EBS_OBJECT_TYPE];
+            const ec2Obj = pair[CONSTANTS.EC2_OBJECT_TYPE];
+            const ec2ProductTag = Object.keys(ec2Obj.matchedTags).filter((t) => t === CONSTANTS.PRODUCT_TAG_CATEGORY);
+            if (ec2ProductTag.length > 0) {
+                let newAnalysisRec = {
+                    matchedTags: ebsObj.matchedTags,
+                    unmatchedTags: ebsObj.unmatchedTags.filter((t) => t != CONSTANTS.PRODUCT_TAG_CATEGORY),
+                    invalidTags: Object.keys(ebsObj.invalidTags).filter((k) => k != CONSTANTS.PRODUCT_TAG_CATEGORY),
+                    extraTags: ebsObj.extraTags,
+                    forceAddTags: [
+                        { [CONSTANTS.PRODUCT_TAG_CATEGORY]: ec2Obj.matchedTags[CONSTANTS.PRODUCT_TAG_CATEGORY] },
+                    ],
+                    taggedObj: ebsObj.taggedObj,
+                };
+                newAnalysisRecords.push(newAnalysisRec);
+            } else {
+                logger.warn(
+                    `EBS volume ${ebsObj.taggedObj.VolumeId} is attached to EC2 instance ${ec2Obj.taggedObj.InstanceId} which doesn't have a valid product tag. EBS volume will not be tagged`
+                );
+            }
+        });
+    } catch (e) {
+        logger.error(`error processing matchedPairs: ${e.message}`);
+    } finally {
+        return newAnalysisRecords;
+    }
+};
+
+const categorizeTaggedObjects = (tagAnalysisObjects) => {
+    let objectCategories = {};
+    objectCategories[CONSTANTS.EC2_OBJECT_TYPE] = [];
+    objectCategories[CONSTANTS.RDS_OBJECT_TYPE] = [];
+    objectCategories[CONSTANTS.EBS_OBJECT_TYPE] = [];
+    objectCategories[CONSTANTS.S3_OBJECT_TYPE] = [];
+
+    tagAnalysisObjects.forEach((tao) => {
+        const resolvedObj = resolveTaggedObject(tao.taggedObj);
+        if (Object.keys(resolvedObj).length > 0) {
+            const objToPush = {
+                ...resolvedObj,
+                ...tao,
+            };
+            objectCategories[resolvedObj.resourceType].push(objToPush);
+        }
+    });
+
+    return objectCategories;
+};
+
+const resolveTaggedObject = (taggedObj) => {
+    let resourceIdentifier = "";
+    let resourceType = "";
+
+    if (!taggedObj[CONSTANTS.PRIMARY_KEY_NAME]) {
+        logger.error(`object ${JSON.stringify(taggedObj, null, 2)} doesn't contain a primary key`);
+        return {};
+    }
+
+    const resourceTypeArr = taggedObj[CONSTANTS.PRIMARY_KEY_NAME] && taggedObj[CONSTANTS.PRIMARY_KEY_NAME].split("-");
+    switch (resourceTypeArr[0]) {
+        case CONSTANTS.EC2_OBJECT_TYPE:
+            resourceIdentifier = taggedObj.InstanceId;
+            resourceType = CONSTANTS.EC2_OBJECT_TYPE;
+            break;
+        case CONSTANTS.RDS_OBJECT_TYPE:
+            resourceIdentifier = taggedObj.DBInstanceIdentifier;
+            resourceType = CONSTANTS.RDS_OBJECT_TYPE;
+            break;
+        case CONSTANTS.EBS_OBJECT_TYPE:
+            resourceIdentifier = taggedObj.VolumeId;
+            resourceType = CONSTANTS.EBS_OBJECT_TYPE;
+            break;
+        case CONSTANTS.S3_OBJECT_TYPE:
+            resourceIdentifier = taggedObj.Name;
+            resourceType = CONSTANTS.S3_OBJECT_TYPE;
+            break;
+    }
+
+    return {
+        resourceIdentifier,
+        resourceType,
+    };
+};
+
+async function analyzeTagDefinitions(taggedObjects) {
     const resolveNormalizedTagKey = (tagKey, config) => {
         if (config[tagKey]) return tagKey;
 
@@ -99,8 +201,8 @@ async function analyzeTagInfo(taggedObjects) {
         let tagConfig = await getConfig();
 
         if (!Object.keys(tagConfig).length > 0) {
-            reject("config object not found")
-        }else {
+            reject("config object not found");
+        } else {
             let results = [];
 
             // Build a list of the enforced tags
@@ -160,30 +262,9 @@ async function analyzeTagInfo(taggedObjects) {
                 });
 
                 // Log what we just processed
-                let resourceIdentifier = "";
-                let resourceType = "";
-                const resourceTypeArr = currTaggedObj[CONSTANTS.PRIMARY_KEY_NAME].split("-");
-                switch (resourceTypeArr[0]) {
-                    case CONSTANTS.EC2_OBJECT_TYPE:
-                        resourceIdentifier = currTaggedObj.InstanceId;
-                        resourceType = CONSTANTS.EC2_OBJECT_TYPE;
-                        break;
-                    case CONSTANTS.RDS_OBJECT_TYPE:
-                        resourceIdentifier = currTaggedObj.DBInstanceIdentifier;
-                        resourceType = CONSTANTS.RDS_OBJECT_TYPE;
-                        break;
-                    case CONSTANTS.EBS_OBJECT_TYPE:
-                        resourceIdentifier = currTaggedObj.VolumeId;
-                        resourceType = CONSTANTS.EBS_OBJECT_TYPE;
-                        break;
-                    case CONSTANTS.S3_OBJECT_TYPE:
-                        resourceIdentifier = currTaggedObj.Name;
-                        resourceType = CONSTANTS.S3_OBJECT_TYPE;
-                        break;
-                }
-
+                let objectCategories = resolveTaggedObject(currTaggedObj);
                 logger.info(
-                    `processed ${resourceType} resource ${resourceIdentifier} [${objCount} of ${taggedObjects.length}]`
+                    `processed ${objectCategories.resourceType} resource ${objectCategories.resourceIdentifier} [${objCount} of ${taggedObjects.length}]`
                 );
                 results.push(objTagAnalysis);
             });
@@ -215,9 +296,32 @@ const processTagAnalysis = () =>
                 logger.info("table cleared. Querying for all tagged objects...");
                 return getDynamoAWSObjects();
             })
+            // Analyze the tag definitions (associations defined in config file)
             .then((taggedObjects) => {
                 logger.info(`found ${taggedObjects.length} objects from dynamodb`);
-                return analyzeTagInfo(taggedObjects);
+                return analyzeTagDefinitions(taggedObjects);
+            })
+            // Analyze the tag associations (eg. EBS - EC2 association)
+            .then((tagDefinitionAnalysis) => {
+                const arrayIncludes = (arrayToMatch, tagAnalysisObj) => {
+                    return arrayToMatch.some((el) => {
+                        let normalizedElement = resolveTaggedObject(el.taggedObj);
+                        let normalizedAnalysisObj = resolveTaggedObject(tagAnalysisObj.taggedObj);
+                        return (
+                            normalizedElement.resourceIdentifier === normalizedAnalysisObj.resourceIdentifier &&
+                            normalizedElement.resourceType === normalizedAnalysisObj.resourceType
+                        );
+                    });
+                };
+
+                let tagAssociationAnalysis = analyzeTagAssociations(tagDefinitionAnalysis);
+
+                // Remove the newly defined tag association analysis object from the tag definition objects since they should override them
+                let tagAnalysisNoDupes = tagDefinitionAnalysis.filter(
+                    (tda) => !arrayIncludes(tagAssociationAnalysis, tda)
+                );
+
+                return [...tagAnalysisNoDupes, ...tagAssociationAnalysis];
             })
             .then((tagAnalysisResults) => {
                 logger.info(`tag analysis complete. Writing to dynamodb...`);
@@ -241,14 +345,18 @@ const processTagAnalysis = () =>
                 return Promise.all(dbAddPromises);
             })
             .then((analysisRecordsWritten) => {
-                logger.info(
-                    `${analysisRecordsWritten.length} analysis records written successfully. Tags successfully processed`
-                );
-                resolve();
+                process.nextTick(() => {
+                    logger.info(
+                        `${analysisRecordsWritten.length} analysis records written successfully. Tags successfully processed`
+                    );
+                    resolve();
+                });
             })
             .catch((err) => {
-                logger.info(`error analyzing tags. Error: ${err.message}`);
-                reject();
+                process.nextTick(() => {
+                    logger.info(`error analyzing tags. Error: ${err.message}`);
+                    reject();
+                });
             });
     });
 
