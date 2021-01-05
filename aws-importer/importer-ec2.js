@@ -38,7 +38,7 @@ const clearAndFetchEc2Instances = () => {
 
 const getDynamoEc2Instances = () => {
     let filterExpression = "begins_with(#pk, :ec2_type)";
-    let expressionAttributeNames = { "#pk": "_pk" };
+    let expressionAttributeNames = { "#pk": CONSTANTS.PRIMARY_KEY_NAME };
     let expressionAttributeValues = { ":ec2_type": CONSTANTS.EC2_OBJECT_TYPE };
 
     // Query for EC2 object types

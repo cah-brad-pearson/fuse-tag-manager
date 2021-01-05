@@ -1,0 +1,28 @@
+{
+    "pcforgs": {
+        "system": "foundational",
+        "prime": "foundational",
+        "hawkeye": "dcoa",
+        "careconnections": "care",
+        "raid": "raid",
+        "vitalpath": "vitalpath",
+        "voltron": "vandelay",
+        "masterbuilders": "care",
+        "spark": "foundational",
+        "craig-courtney": "foundational",
+        "fuse-peer-review": "foundational",
+        "pied-pipers": "telepharm",
+        "apa": "apa",
+        "labs": "datalab",
+        "rxid": "rxid",
+        "optifreight": "",
+        "fuse": "foundational",
+        "thecw": "biopharma_reporting",
+        "rcs": "rcs",
+        "rogues": "innovation",
+        "hidden-leaf": "mscripts",
+        "connect-plus": "care",
+        "clinicalplatform": "care",
+        "mscripts": "mscripts"
+    }
+}

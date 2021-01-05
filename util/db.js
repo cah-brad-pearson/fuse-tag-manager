@@ -125,14 +125,14 @@ const queryDynamoDB = (tableName, keyConditionExpression, expressionAttributeNam
     });
 };
 
-const getConfig = () => {
+const getConfig = (configRecord = CONSTANTS.CONFIG_PK) => {
     // Query the DB for the config info
     let keyCondition = `#pk = :config_pk`;
     let expressionAttributeNames = {
         "#pk": CONSTANTS.PRIMARY_KEY_NAME,
     };
     let expressionAttributeValues = {
-        ":config_pk": CONSTANTS.CONFIG_PK,
+        ":config_pk": configRecord,
     };
 
     return queryDynamoDB(CONSTANTS.TABLE_NAME, keyCondition, expressionAttributeNames, expressionAttributeValues);

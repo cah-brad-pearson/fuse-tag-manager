@@ -6,6 +6,7 @@ const { addDynamoDBRecord, scanDynamoDB, deleteRecordsByPK, getConfig } = requir
 const logger = require("../util/logger").init();
 const { tagValueFinder, hasPopulationInstruction } = require("../util/tag-value-finder");
 const ec2Ebs = require("./ec2-ebs.js");
+const pcfAnalysis = require("./pcf.js");
 
 const TAG_FINDER_STATUS = {
     VALID: "tagValueValid",
@@ -30,12 +31,20 @@ const getDynamoAWSObjects = () => {
     return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
 };
 
-const analyzeTagAssociations = (taggedObjects) => {
-    // There should be a call to each tag association function
-    // here and we should return all records from all functions
+const createNewAnalysisRecord = (analysisObj, forceAddTags) => {
+    let newAnalysisRec = {
+        matchedTags: analysisObj.matchedTags,
+        unmatchedTags: analysisObj.unmatchedTags.filter((t) => t != CONSTANTS.PRODUCT_TAG_CATEGORY),
+        invalidTags: Object.keys(analysisObj.invalidTags).filter((k) => k != CONSTANTS.PRODUCT_TAG_CATEGORY),
+        extraTags: analysisObj.extraTags,
+        forceAddTags,
+        taggedObj: analysisObj.taggedObj,
+    };
 
-    const taggedObjCategories = categorizeTaggedObjects(taggedObjects);
+    return newAnalysisRec;
+};
 
+const ec2EbsMatching = (taggedObjCategories) => {
     // Call EBS to EC2 association function
     let matchedPairs = ec2Ebs.matchEBSandEC2Instances(
         taggedObjCategories[CONSTANTS.EBS_OBJECT_TYPE],
@@ -50,16 +59,20 @@ const analyzeTagAssociations = (taggedObjects) => {
             const ec2Obj = pair[CONSTANTS.EC2_OBJECT_TYPE];
             const ec2ProductTag = Object.keys(ec2Obj.matchedTags).filter((t) => t === CONSTANTS.PRODUCT_TAG_CATEGORY);
             if (ec2ProductTag.length > 0) {
-                let newAnalysisRec = {
-                    matchedTags: ebsObj.matchedTags,
-                    unmatchedTags: ebsObj.unmatchedTags.filter((t) => t != CONSTANTS.PRODUCT_TAG_CATEGORY),
-                    invalidTags: Object.keys(ebsObj.invalidTags).filter((k) => k != CONSTANTS.PRODUCT_TAG_CATEGORY),
-                    extraTags: ebsObj.extraTags,
-                    forceAddTags: [
-                        { [CONSTANTS.PRODUCT_TAG_CATEGORY]: ec2Obj.matchedTags[CONSTANTS.PRODUCT_TAG_CATEGORY] },
-                    ],
-                    taggedObj: ebsObj.taggedObj,
-                };
+                let forceAddTags = [
+                    { [CONSTANTS.PRODUCT_TAG_CATEGORY]: ec2Obj.matchedTags[CONSTANTS.PRODUCT_TAG_CATEGORY] },
+                ];
+                let newAnalysisRec = createNewAnalysisRecord(ebsObj, forceAddTags);
+                // let newAnalysisRec = {
+                //     matchedTags: ebsObj.matchedTags,
+                //     unmatchedTags: ebsObj.unmatchedTags.filter((t) => t != CONSTANTS.PRODUCT_TAG_CATEGORY),
+                //     invalidTags: Object.keys(ebsObj.invalidTags).filter((k) => k != CONSTANTS.PRODUCT_TAG_CATEGORY),
+                //     extraTags: ebsObj.extraTags,
+                //     forceAddTags: [
+                //         { [CONSTANTS.PRODUCT_TAG_CATEGORY]: ec2Obj.matchedTags[CONSTANTS.PRODUCT_TAG_CATEGORY] },
+                //     ],
+                //     taggedObj: ebsObj.taggedObj,
+                // };
                 newAnalysisRecords.push(newAnalysisRec);
             } else {
                 logger.warn(
@@ -68,10 +81,102 @@ const analyzeTagAssociations = (taggedObjects) => {
             }
         });
     } catch (e) {
-        logger.error(`error processing matchedPairs: ${e.message}`);
+        throw new Error(`error processing EC2->EB2 matchedPairs: ${e.message}`);
     } finally {
         return newAnalysisRecords;
     }
+};
+
+const pcfRdsMatching = (taggedObjCategories) => {
+    return new Promise((resolve, reject) => {
+        getConfig(CONSTANTS.PCF_ORG_PK)
+            .then((pcfConfig) => {
+                const pcfRdsAnalysisRecords = pcfAnalysis.matchRDSinstancesToPCFOrgs(
+                    taggedObjCategories[CONSTANTS.RDS_OBJECT_TYPE],
+                    pcfConfig
+                );
+
+                return pcfRdsAnalysisRecords;
+            })
+            .then((analysisRecs) => {
+                return new Promise((res, rej) => {
+                    getConfig(CONSTANTS.PCF_ORG_LOOKUP_PK).then((config) => {
+                        res([analysisRecs, config]);
+                    });
+                });
+            })
+            .then((results) => {
+                // associate PCF org names with products
+                let pcfRdsAnalysisRecs = results[0];
+                let config = results[1];
+
+                let newPcfRdsAnalysisRecs = [];
+                let analysisRecsAlreadyTagged = [];
+
+                pcfRdsAnalysisRecs.forEach((ar) => {
+                    let pcfOrg = ar[CONSTANTS.PCF_ORG];
+                    let orgsToProducts = config[CONSTANTS.PCF_CONFIG_ORG_LABEL];
+                    let matchedProduct = orgsToProducts[pcfOrg.toLowerCase()];
+
+                    let rdsTaggedProduct = ar[CONSTANTS.RDS_OBJECT_TYPE].matchedTags.product;
+                    // Check to see if there is already a product tag
+                    if (rdsTaggedProduct) {
+                        logger.warn(
+                            `RDS instance '${
+                                ar[CONSTANTS.RDS_OBJECT_TYPE].resourceIdentifier
+                            }' is already tagged to product '${rdsTaggedProduct}'`
+                        );
+
+                        // If the instance is already tagged with a product team but the PCF org lookup doesn't match
+                        if (
+                            matchedProduct &&
+                            ar[CONSTANTS.RDS_OBJECT_TYPE].matchedTags.product.toLowerCase() !==
+                                matchedProduct.toLowerCase()
+                        ) {
+                            logger.warn(
+                                `RDS instance '${
+                                    ar[CONSTANTS.RDS_OBJECT_TYPE].resourceIdentifier
+                                }' is tagged to product '${rdsTaggedProduct}'
+                            but was created by an application in the PCF org '${pcfOrg}' which is
+                            mapped to the team '${matchedProduct}'.Overwriting product tag with '${matchedProduct}'`
+                            );
+                            newPcfRdsAnalysisRecs.push(
+                                createNewAnalysisRecord(ar[CONSTANTS.RDS_OBJECT_TYPE], {
+                                    [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct,
+                                })
+                            );
+                        }
+                        analysisRecsAlreadyTagged.push([ar, { [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct }]);
+                    } else if (matchedProduct) {
+                        // Create a new analysis record
+                        let forceAddTags = { [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct };
+                        let newAnalysisRec = createNewAnalysisRecord(ar[CONSTANTS.RDS_OBJECT_TYPE], forceAddTags);
+                        newPcfRdsAnalysisRecs.push(newAnalysisRec);
+                    } else {
+                        logger.warn(`could not find a product match for PCF org '${pcfOrg}'`);
+                    }
+                });
+
+                resolve(newPcfRdsAnalysisRecs);
+            })
+            .catch((e) => {
+                logger.error(e.message);
+                reject();
+            });
+    });
+};
+
+const analyzeTagAssociations = async (taggedObjects) => {
+    // There should be a call to each tag association function
+    // here and we should return all records from all functions
+
+    const taggedObjCategories = categorizeTaggedObjects(taggedObjects);
+
+    const ec2EbsAnalysisRecs = ec2EbsMatching(taggedObjCategories);
+
+    const pcfRdsAnalysisRecs = await pcfRdsMatching(taggedObjCategories);
+
+    return [...ec2EbsAnalysisRecs, ...pcfRdsAnalysisRecs];
 };
 
 const categorizeTaggedObjects = (tagAnalysisObjects) => {
@@ -139,6 +244,7 @@ async function analyzeTagDefinitions(taggedObjects) {
         Object.keys(config)
             .filter((k) => k !== CONSTANTS.PRIMARY_KEY_NAME)
             .some((configKey) => {
+                if (!config[configKey][CONSTANTS.VALID_KEY_NAMES]) return false;
                 return config[configKey][CONSTANTS.VALID_KEY_NAMES].some((vkv) => {
                     if (vkv === tagKey) {
                         resolvedTagKey = configKey;
@@ -301,8 +407,22 @@ const processTagAnalysis = () =>
                 logger.info(`found ${taggedObjects.length} objects from dynamodb`);
                 return analyzeTagDefinitions(taggedObjects);
             })
-            // Analyze the tag associations (eg. EBS - EC2 association)
+            // Analyze the tag associations not defined in the config (eg. EBS - EC2 association)
             .then((tagDefinitionAnalysis) => {
+                return new Promise((resolve, reject) => {
+                    analyzeTagAssociations(tagDefinitionAnalysis)
+                        .then((tagAssociationAnalysis) => {
+                            resolve([tagAssociationAnalysis, tagDefinitionAnalysis]);
+                        })
+                        .catch((err) => {
+                            reject(err);
+                        });
+                });
+            })
+            .then((results) => {
+                let tagAssociationAnalysis = results[0];
+                let tagDefinitionAnalysis = results[1];
+
                 const arrayIncludes = (arrayToMatch, tagAnalysisObj) => {
                     return arrayToMatch.some((el) => {
                         let normalizedElement = resolveTaggedObject(el.taggedObj);
@@ -314,16 +434,13 @@ const processTagAnalysis = () =>
                     });
                 };
 
-                let tagAssociationAnalysis = analyzeTagAssociations(tagDefinitionAnalysis);
-
                 // Remove the newly defined tag association analysis object from the tag definition objects since they should override them
                 let tagAnalysisNoDupes = tagDefinitionAnalysis.filter(
                     (tda) => !arrayIncludes(tagAssociationAnalysis, tda)
                 );
 
-                return [...tagAnalysisNoDupes, ...tagAssociationAnalysis];
-            })
-            .then((tagAnalysisResults) => {
+                let tagAnalysisResults = [...tagAnalysisNoDupes, ...tagAssociationAnalysis];
+
                 logger.info(`tag analysis complete. Writing to dynamodb...`);
                 // Write the tag analysis to dynamodb
                 let analysisRecords = tagAnalysisResults.map((rec) => {
