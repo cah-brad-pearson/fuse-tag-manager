@@ -35,7 +35,7 @@ const getPCFOrgs = (pcfUsername, pcfPassword, endpoint) => {
             return apps;
         })
         .catch((reason) => {
-            console.error("error: " + reason);
+            throw new Error("Error fetching PCF orgs: " + reason);
         });
 };
 
@@ -48,7 +48,7 @@ const getDynamoPCFConfigRecord = () => {
     return scanDynamoDB(CONSTANTS.TABLE_NAME, filterExpression, expressionAttributeNames, expressionAttributeValues);
 };
 
-const clearAndFetchPCFOrgs = (pcfEnvironments) => {
+const clearAndFetchPCFOrgs = (pcfEnvironments = []) => {
     return new Promise((resolve, reject) => {
         // query the current record and delete it
         getDynamoPCFConfigRecord()
@@ -81,7 +81,7 @@ const clearAndFetchPCFOrgs = (pcfEnvironments) => {
                         resolve(pcfOrgsDBRec);
                     })
                     .catch((error) => {
-                        reject(error);
+                        throw new Error(error);
                     });
             })
             .then(() => {

@@ -9,16 +9,15 @@ let pcfApis = [
 ]; //process.env.PCF_APIS.split(",");
 let pcfEnvs = pcfApis.map((a) => ({ username: pcfUsername, password: pcfPassword, url: a }));
 
-if (!(pcfUsername || pcfPassword || pcfApis)) {
-    console.error("need to specify the pcf env arguments");
-    process.exit(-1);
-}
-
 importResources(pcfEnvs)
     .then(() => {
         console.log("import complete");
-        process.exit(0);
     })
     .catch((err) => {
-        console.error(`Error running process resources: ${err.message}`);
+        console.error(`Error running import process: ${err.message}`);
+    })
+    .finally(() => {
+        process.nextTick(() => {
+            process.exit(0);
+        });
     });

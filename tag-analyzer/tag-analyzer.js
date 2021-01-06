@@ -63,20 +63,12 @@ const ec2EbsMatching = (taggedObjCategories) => {
                     { [CONSTANTS.PRODUCT_TAG_CATEGORY]: ec2Obj.matchedTags[CONSTANTS.PRODUCT_TAG_CATEGORY] },
                 ];
                 let newAnalysisRec = createNewAnalysisRecord(ebsObj, forceAddTags);
-                // let newAnalysisRec = {
-                //     matchedTags: ebsObj.matchedTags,
-                //     unmatchedTags: ebsObj.unmatchedTags.filter((t) => t != CONSTANTS.PRODUCT_TAG_CATEGORY),
-                //     invalidTags: Object.keys(ebsObj.invalidTags).filter((k) => k != CONSTANTS.PRODUCT_TAG_CATEGORY),
-                //     extraTags: ebsObj.extraTags,
-                //     forceAddTags: [
-                //         { [CONSTANTS.PRODUCT_TAG_CATEGORY]: ec2Obj.matchedTags[CONSTANTS.PRODUCT_TAG_CATEGORY] },
-                //     ],
-                //     taggedObj: ebsObj.taggedObj,
-                // };
                 newAnalysisRecords.push(newAnalysisRec);
             } else {
                 logger.warn(
-                    `EBS volume ${ebsObj.taggedObj.VolumeId} is attached to EC2 instance ${ec2Obj.taggedObj.InstanceId} which doesn't have a valid product tag. EBS volume will not be tagged`
+                    `EBS volume ${ebsObj.taggedObj.VolumeId} is attached to EC2 instance 
+                    ${ec2Obj.taggedObj.InstanceId} which doesn't have a valid product tag.
+                    EBS volume will not be tagged`
                 );
             }
         });
@@ -141,15 +133,17 @@ const pcfRdsMatching = (taggedObjCategories) => {
                             mapped to the team '${matchedProduct}'.Overwriting product tag with '${matchedProduct}'`
                             );
                             newPcfRdsAnalysisRecs.push(
-                                createNewAnalysisRecord(ar[CONSTANTS.RDS_OBJECT_TYPE], {
-                                    [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct,
-                                })
+                                createNewAnalysisRecord(ar[CONSTANTS.RDS_OBJECT_TYPE], [
+                                    {
+                                        [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct,
+                                    },
+                                ])
                             );
                         }
                         analysisRecsAlreadyTagged.push([ar, { [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct }]);
                     } else if (matchedProduct) {
                         // Create a new analysis record
-                        let forceAddTags = { [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct };
+                        let forceAddTags = [{ [CONSTANTS.PRODUCT_TAG_CATEGORY]: matchedProduct }];
                         let newAnalysisRec = createNewAnalysisRecord(ar[CONSTANTS.RDS_OBJECT_TYPE], forceAddTags);
                         newPcfRdsAnalysisRecs.push(newAnalysisRec);
                     } else {
