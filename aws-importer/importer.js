@@ -6,44 +6,97 @@ const { clearAndFetchEc2Instances } = require("./importer-ec2");
 const { clearAndFetchRDSRecords } = require("./importer-rds");
 const { clearAndFetchEBSVolumes } = require("./importer-ebs");
 const { clearAndFetchS3Records } = require("./importer-s3");
+const { clearAndFetchPCFOrgs } = require("./importer-pcf");
 
 AWS.config.update({ region: "us-east-1" });
 
-const importResources = () =>
-    new Promise((resolve, reject) => {
+const importResources = (pcfEnvironments) =>
+    new Promise((resolve) => {
         clearAndFetchEc2Instances()
-            // Populate the DB table
-            .then((ec2Instances) => writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ec2Instances))
-            .then((ec2RecordsWritten) => {
-                logger.info(`wrote ${ec2RecordsWritten} EC2 records to db table`);
+            //EC2 instances
+            .then((ec2Instances) => {
+                return new Promise((resolve) => {
+                    writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ec2Instances).then((ec2RecordsWritten) => {
+                        logger.info(`wrote ${ec2RecordsWritten} EC2 records to db table`);
+                        resolve();
+                    });
+                });
             })
             // RDS instances
-            .then(() => clearAndFetchRDSRecords())
-            .then((rdsInstances) => writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, rdsInstances))
-            .then((rdsRecordsWritten) => {
-                logger.info(`wrote ${rdsRecordsWritten} RDS records to db table`);
+            .then(() => {
+                return new Promise((resolve) => {
+                    clearAndFetchRDSRecords()
+                        .then((rdsInstances) => {
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, rdsInstances).then((rdsRecordsWritten) => {
+                                logger.info(`wrote ${rdsRecordsWritten} RDS records to db table`);
+                                resolve();
+                            });
+                        })
+                        .catch((err) => {
+                            logger.error(`error processing RDS instances: ${err.message}`);
+                            resolve();
+                        });
+                });
             })
-            // Query AWS for EBS volumes
-            .then(() => clearAndFetchEBSVolumes())
-            .then((ebsVolumes) => {
-                logger.info(`fetched ${ebsVolumes.length} EBS records`);
-                return writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ebsVolumes);
+            // EBS volumes
+            .then(() => {
+                return new Promise((resolve) => {
+                    clearAndFetchEBSVolumes()
+                        .then((ebsVolumes) => {
+                            logger.info(`fetched ${ebsVolumes.length} EBS records`);
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ebsVolumes).then((recordsWritten) => {
+                                logger.info(`wrote ${recordsWritten} EBS records to db table`);
+                                resolve();
+                            });
+                        })
+                        .catch((err) => {
+                            logger.error(`error processing EBS volumes: ${err.message}`);
+                            resolve();
+                        });
+                });
             })
-            .then((recordsWritten) => {
-                logger.info(`wrote ${recordsWritten} EBS records to db table`);
-                return clearAndFetchS3Records();
+
+            // S3 buckets
+            .then(() => {
+                return new Promise((resolve) => {
+                    clearAndFetchS3Records()
+                        .then((buckets) => {
+                            logger.info(`${buckets.length} buckets fetched from S3`);
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, buckets).then((recordsWritten) => {
+                                logger.info(`wrote ${recordsWritten} S3 records to db table`);
+                                resolve();
+                            });
+                        })
+                        .catch((err) => {
+                            logger.error(`error processing S3 buckets: ${err.message}`);
+                            resolve();
+                        });
+                });
             })
-            .then((buckets) => {
-                logger.info(`${buckets.length} buckets fetched from S3`);
-                return writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, buckets);
+            .then(() => {
+                //PCF orgs
+                logger.info("Importing PCF orgs...");
+                return new Promise((resolve) => {
+                    clearAndFetchPCFOrgs(pcfEnvironments)
+                        .then((results) => {
+                            let keysLength = Object.keys(results.orgs).length;
+                            logger.info(`${keysLength} pcf orgs fetched`);
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, [pcfOrgsRec]).then(() => {
+                                resolve();
+                            });
+                        })
+                        .catch((err) => {
+                            logger.error(`Error in importer: ${err.message}`);
+                            resolve();
+                        });
+                });
             })
-            .then((recordsWritten) => {
-                logger.info(`wrote ${recordsWritten} S3 records to db table`);
+            .then(() => {
                 resolve();
             })
-            .catch((error) => {
-                logger.error(`error processing AWS records. Error: ${error}`);
-                reject();
+            .catch((err) => {
+                logger.error(`error processing EC2 instances: ${err.message}`);
+                resolve();
             });
     });
 

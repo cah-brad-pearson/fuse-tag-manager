@@ -8,7 +8,13 @@ const constants_to_export = {
     LOG_OBJECT_TYPE: "LOG",
     ANALYSIS_OBJECT_TYPE: "ANALYSIS",
     CONFIG_PK: "CONFIG-1000",
-    VALID_KEY_NAMES: "validKeyNames"
+    PCF_ORG_PK: "PCF_ORGS-1000",
+    PCF_ORG_LOOKUP_PK: "PCF_ORG_LOOKUP-1000",
+    VALID_KEY_NAMES: "validKeyNames",
+    PRODUCT_TAG_CATEGORY: "product",
+    PCF_ORG: "PCF_ORG",
+    PCF_ORG_SPACE_IDENTIFIER: "org.space",
+    PCF_CONFIG_ORG_LABEL: "pcforgs",
 };
 
 module.exports = constants_to_export;

@@ -138,7 +138,7 @@ const getResourcesWithoutProductTags = (analysisRecords) => {
 };
 
 const createNewTagObj = (analysisRecord, config) => {
-    const tagsToWrite = {};
+    let tagsToWrite = {};
 
     // Enforce the missing and invalid tags
     let unmatchedAndInvalidTags = [...Object.keys(analysisRecord.invalidTags), ...analysisRecord.unmatchedTags];
@@ -157,6 +157,13 @@ const createNewTagObj = (analysisRecord, config) => {
             tagValue && (tagsToWrite[tagKey] = tagValue);
         }
     });
+
+    // Add the force tags records
+    if (analysisRecord.forceAddTags) {
+        analysisRecord.forceAddTags.forEach((t) => {
+            tagsToWrite = { ...tagsToWrite, ...t };
+        });
+    }
 
     return tagsToWrite;
 };
@@ -183,6 +190,7 @@ const enforceTagsFromAnalysis = () =>
                         matchedTags: rec.matchedTags,
                         unmatchedTags: rec.unmatchedTags,
                         originalTags: rec.taggedObj.Tags,
+                        forceAddTags: rec.forceAddTags,
                     };
 
                     // switch on the object type
