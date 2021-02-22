@@ -6,20 +6,32 @@ const { clearAndFetchEc2Instances } = require("./importer-ec2");
 const { clearAndFetchRDSRecords } = require("./importer-rds");
 const { clearAndFetchEBSVolumes } = require("./importer-ebs");
 const { clearAndFetchS3Records } = require("./importer-s3");
-const { clearAndFetchPCFOrgs } = require("./importer-pcf");
+const { pcfInit, clearAndFetchPCFOrgs } = require("./importer-pcf");
+
+const PCF_USERNAME = process.env.PCF_USERNAME;
+const PCF_PASSWORD = process.env.PCF_PASSWORD;
+const defaultPCFEnvironments = [
+    {
+        url: "https://api.system.np1.fuseapps.io",
+    },
+];
 
 AWS.config.update({ region: "us-east-1" });
 
-const importResources = (pcfEnvironments) =>
-    new Promise((resolve) => {
+const importResources = (pcfEnvironments = defaultPCFEnvironments) => {
+    const addTimestamp = (records) => records.map((r) => ({ ...r, timeStamp: new Date().toUTCString() }));
+
+    return new Promise((resolve) => {
         clearAndFetchEc2Instances()
             //EC2 instances
             .then((ec2Instances) => {
                 return new Promise((resolve) => {
-                    writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ec2Instances).then((ec2RecordsWritten) => {
-                        logger.info(`wrote ${ec2RecordsWritten} EC2 records to db table`);
-                        resolve();
-                    });
+                    writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, addTimestamp(ec2Instances)).then(
+                        (ec2RecordsWritten) => {
+                            logger.info(`wrote ${ec2RecordsWritten} EC2 records to db table`);
+                            resolve();
+                        }
+                    );
                 });
             })
             // RDS instances
@@ -27,10 +39,12 @@ const importResources = (pcfEnvironments) =>
                 return new Promise((resolve) => {
                     clearAndFetchRDSRecords()
                         .then((rdsInstances) => {
-                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, rdsInstances).then((rdsRecordsWritten) => {
-                                logger.info(`wrote ${rdsRecordsWritten} RDS records to db table`);
-                                resolve();
-                            });
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, addTimestamp(rdsInstances)).then(
+                                (rdsRecordsWritten) => {
+                                    logger.info(`wrote ${rdsRecordsWritten} RDS records to db table`);
+                                    resolve();
+                                }
+                            );
                         })
                         .catch((err) => {
                             logger.error(`error processing RDS instances: ${err.message}`);
@@ -44,10 +58,12 @@ const importResources = (pcfEnvironments) =>
                     clearAndFetchEBSVolumes()
                         .then((ebsVolumes) => {
                             logger.info(`fetched ${ebsVolumes.length} EBS records`);
-                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, ebsVolumes).then((recordsWritten) => {
-                                logger.info(`wrote ${recordsWritten} EBS records to db table`);
-                                resolve();
-                            });
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, addTimestamp(ebsVolumes)).then(
+                                (recordsWritten) => {
+                                    logger.info(`wrote ${recordsWritten} EBS records to db table`);
+                                    resolve();
+                                }
+                            );
                         })
                         .catch((err) => {
                             logger.error(`error processing EBS volumes: ${err.message}`);
@@ -62,10 +78,12 @@ const importResources = (pcfEnvironments) =>
                     clearAndFetchS3Records()
                         .then((buckets) => {
                             logger.info(`${buckets.length} buckets fetched from S3`);
-                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, buckets).then((recordsWritten) => {
-                                logger.info(`wrote ${recordsWritten} S3 records to db table`);
-                                resolve();
-                            });
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, addTimestamp(buckets)).then(
+                                (recordsWritten) => {
+                                    logger.info(`wrote ${recordsWritten} S3 records to db table`);
+                                    resolve();
+                                }
+                            );
                         })
                         .catch((err) => {
                             logger.error(`error processing S3 buckets: ${err.message}`);
@@ -76,12 +94,15 @@ const importResources = (pcfEnvironments) =>
             .then(() => {
                 //PCF orgs
                 logger.info("Importing PCF orgs...");
+                // Set the PCF username and password
+                pcfInit(PCF_USERNAME, PCF_PASSWORD);
                 return new Promise((resolve) => {
                     clearAndFetchPCFOrgs(pcfEnvironments)
                         .then((results) => {
                             let keysLength = Object.keys(results.orgs).length;
                             logger.info(`${keysLength} pcf orgs fetched`);
-                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, [pcfOrgsRec]).then(() => {
+                            let pcfEnvs = { _pk: CONSTANTS.PCF_ORG_PK, orgs: results.orgs };
+                            writeRecordsToDynamoDB(CONSTANTS.TABLE_NAME, [pcfEnvs]).then(() => {
                                 resolve();
                             });
                         })
@@ -99,5 +120,5 @@ const importResources = (pcfEnvironments) =>
                 resolve();
             });
     });
-
+};
 module.exports.importResources = importResources;

@@ -1,0 +1,41 @@
+.headerwrapper {
+  padding: 20px 10px;
+  margin-left: 0px;
+  border: 5px solid lightgray;
+  border-radius: 10px;
+  margin-bottom: 15px;
+}
+
+.dropdownwrapper {
+}
+
+.ncslabel {
+  display: inline-block;
+  padding-top: 20px;
+}
+
+.ncsinput {
+  display: inline-block;
+}
+
+.querybutton {
+  margin: 10px 0;
+  background: white;
+  color: lightgray;
+  border: 2px solid darkgray;
+  border-radius: 5px;
+}
+
+.querybutton:hover {
+  background: green;
+  color: white;
+  border: 2px solid green;
+}
+
+label.teamLabel {
+  display: inline-block;
+}
+
+label a.teamSwitcher {
+  margin-left: 5px;
+}

@@ -9,7 +9,7 @@ let pcfApis = [
 ]; //process.env.PCF_APIS.split(",");
 let pcfEnvs = pcfApis.map((a) => ({ username: pcfUsername, password: pcfPassword, url: a }));
 
-importResources(pcfEnvs)
+importResources()
     .then(() => {
         console.log("import complete");
     })
