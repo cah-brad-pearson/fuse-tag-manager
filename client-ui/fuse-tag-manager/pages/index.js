@@ -15,7 +15,7 @@ export default function Home() {
   );
   const awsResources = data ? [].concat(...data.resources) : [];
   const lastEvaluatedKey = data && data.lastEvaluatedKey;
-  let loadingData = false;
+  let loadingData = !data;
 
   const getMoreResources = (e) => {
     let newQsObj = {
@@ -44,19 +44,28 @@ export default function Home() {
             setQsObj(newQsObj);
           }}
         />
-        <div>Total Resources: {awsResources.length}</div>
-        <div>Last Resources Returned: {awsResources.length}</div>
-        <div>Last Eval Key: {lastEvaluatedKey ? lastEvaluatedKey._pk : ''}</div>
-        {awsResources.map((elem) => {
-          return (
-            <div key={elem._pk}>
-              <AwsResource data={elem}></AwsResource>
+        {!loadingData && (
+          <>
+            <div>Total Resources: {awsResources.length}</div>
+            <div>Last Resources Returned: {awsResources.length}</div>
+            <div>
+              Last Eval Key: {lastEvaluatedKey ? lastEvaluatedKey._pk : ''}
             </div>
-          );
-        })}
-        <div className="more-button" onClick={getMoreResources}>
-          Get More
-        </div>
+            {awsResources.map((elem) => {
+              return (
+                <div key={elem._pk}>
+                  <AwsResource data={elem}></AwsResource>
+                </div>
+              );
+            })}
+            {lastEvaluatedKey && (
+              <div className="more-button" onClick={getMoreResources}>
+                Get More
+              </div>
+            )}
+          </>
+        )}
+        {loadingData && <div> Loading Data...</div>}
       </div>
     </Layout>
   );
