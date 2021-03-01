@@ -4,6 +4,9 @@ const logger = require("../util/logger").init();
 
 const cfClient = require("../node_modules/cf-nodejs-client");
 
+let _pcfUsername;
+let _pcfPassword;
+
 const getPCFOrgs = (pcfUsername, pcfPassword, endpoint) => {
     const UsersUAA = new cfClient.UsersUAA();
     const Apps = new cfClient.Apps(endpoint);
@@ -60,7 +63,7 @@ const clearAndFetchPCFOrgs = (pcfEnvironments = []) => {
             .then(() => {
                 // support fetching different PCF environments
                 let pcfEndpoints = [];
-                pcfEnvironments.forEach((env) => pcfEndpoints.push(getPCFOrgs(env.username, env.password, env.url)));
+                pcfEnvironments.forEach((env) => pcfEndpoints.push(getPCFOrgs(_pcfUsername, _pcfPassword, env.url)));
                 return Promise.all(pcfEndpoints)
                     .then((resultArrays) => {
                         let pcfOrgsDBRec = {
@@ -93,6 +96,12 @@ const clearAndFetchPCFOrgs = (pcfEnvironments = []) => {
     });
 };
 
+const init = (pcfUsername, pcfPassword) => {
+    _pcfUsername = pcfUsername;
+    _pcfPassword = pcfPassword;
+};
+
 module.exports = {
     clearAndFetchPCFOrgs,
+    pcfInit: init,
 };

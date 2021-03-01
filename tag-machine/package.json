@@ -10,7 +10,11 @@
         "add-node-modules": "zip -r -u build/fuse-tag-manager.zip node_modules/*",
         "build-package": "npm run delete-deployment && npm run add-node-source && npm run add-node-modules",
         "copy-to-s3": "aws s3 cp ./build/fuse-tag-manager.zip s3://cah-coredm-temp/brad/fuse-tag-manager/fuse-tag-manager.zip",
-        "build-and-copy": "npm run build-package && npm run copy-to-s3"
+        "build-and-copy": "npm run build-package && npm run copy-to-s3",
+        "build-get-resources-lambda": "rm build/get-resources.zip;cd ./lambda/get-resources; zip -r ../../build/get-resources.zip *.js",
+        "deploy-get-lambdas-to-function": "aws lambda update-function-code --function-name ftm-get-resources --zip-file fileb://build/get-resources.zip",
+        "deploy-lambdas": "aws s3 cp ./build/get-resources.zip s3://fuse-lambda-source-code/ftm-get-resources/get-resources.zip;npm run deploy-get-lambdas-to-function",
+        "build-and-deploy-lambdas": "npm run build-get-resources-lambda;npm run deploy-lambdas"
     },
     "author": "Brad Pearson",
     "license": "ISC",

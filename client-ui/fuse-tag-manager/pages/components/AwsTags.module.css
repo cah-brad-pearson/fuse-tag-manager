@@ -1,0 +1,27 @@
+.tagwrapper {
+    border: 2px lightgray solid;
+    border-radius: 5px;
+    padding: 10px;
+    margin: 5px 0;
+}
+
+.title {
+    margin: 20px 0;
+    font-weight: bold;
+    font-size: 16px;
+    margin-bottom: 5px;
+    margin-left: 5px;
+}
+
+.tagdata {
+    padding: 5px;
+}
+
+.tagkey {
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.tagpair {
+    padding: 1px 0;
+}
