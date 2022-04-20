@@ -4,7 +4,7 @@ const { getConfig } = require("../util/db");
 
 const matchEBSandEC2Instances = (ebsAnalysisObjects, ec2TaggedObjects) => {
     // Filter out the ebs volumes with missing product tags
-    return new Promise(resolve, (reject) => {
+    return new Promise((resolve, reject) => {
         let ebsVolumesWithoutProduct = ebsAnalysisObjects.filter((ebo) => {
             let productMatched = Object.keys(ebo.matchedTags).some((key) => {
                 // Need to add in the other product tag possibilities like fuse:product
