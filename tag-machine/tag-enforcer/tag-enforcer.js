@@ -138,14 +138,17 @@ const getResourcesWithoutProductTags = (analysisRecords) => {
 };
 
 const createNewTagObj = (analysisRecord, config) => {
-    let tagsToWrite = {};
+    // Since this will be a complete replace, retain the matched and extra tags
+    let tagsToWrite = { ...analysisRecord.extraTags, ...analysisRecord.matchedTags };
+    let invalidTags = [];
+    let addedTags = 0;
 
-    // Enforce the missing and invalid tags
-    let unmatchedAndInvalidTags = [...Object.keys(analysisRecord.invalidTags), ...analysisRecord.unmatchedTags];
+    // only write the tags back if we detect a change. Don't just write the originals back unnecessarily
+    let newTagCount = 0;
 
-    unmatchedAndInvalidTags.forEach((tagKey) => {
+    // Try to resolve the invalid tags
+    Object.keys(analysisRecord.invalidTags).forEach((tagKey) => {
         if (hasPopulationInstruction(tagKey, config)) {
-            //logger.info(`DEBUG: ${analysisRecord.resourceIdentifier} - key: ${tagKey} `);
             let tagValue = tagValueFinder(
                 tagKey,
                 analysisRecord.matchedTags,
@@ -154,18 +157,70 @@ const createNewTagObj = (analysisRecord, config) => {
                 config
             );
 
-            tagValue && (tagsToWrite[tagKey] = tagValue);
+            if (tagValue) {
+                tagsToWrite[tagKey] = tagValue;
+                newTagCount++;
+            } else {
+                // Invalid tag that we couldn't resolve the value for probably because the current value used for determining this value isn't supported
+                tagsToWrite[tagKey] = analysisRecord.invalidTags[tagKey];
+                invalidTags.push(tagKey);
+            }
+        } else {
+            // Invalid tag without population instructions. i.e. the current tag value doesn't match a valid config value and we don't know how to populate it programatically
+            tagsToWrite[tagKey] = analysisRecord.invalidTags[tagKey];
+            invalidTags.push(tagKey);
         }
     });
 
+    // Record a single tag with all the invalid tag keys
+    if (invalidTags.length > 0) {
+        tagsToWrite[CONSTANTS.FTM_INVALID_KEYS] = invalidTags.join("__");
+        addedTags++;
+        newTagCount++;
+    }
+
+    // Add a tag for the unmatched tags that are required
+    if (analysisRecord.unmatchedTags.length > 0) {
+        tagsToWrite[CONSTANTS.FTM_MISSING_KEYS] = analysisRecord.unmatchedTags.join("__");
+        addedTags++;
+        newTagCount++;
+    }
+
     // Add the force tags records
+    let forceAddTagLength = 0;
     if (analysisRecord.forceAddTags) {
+        forceAddTagLength = analysisRecord.forceAddTags.length;
         analysisRecord.forceAddTags.forEach((t) => {
             tagsToWrite = { ...tagsToWrite, ...t };
+            newTagCount++;
         });
     }
 
-    return tagsToWrite;
+    if (analysisRecord.originalTags.length != Object.keys(tagsToWrite).length - (addedTags + forceAddTagLength)) {
+        logger.warn(
+            `Tag enforcer detected missing tags to analysis record ${analysisRecord._pk}. No tagging changes are being applied.`
+        );
+        tagsToWrite = {};
+    }
+
+    // Only write new tags if we have new k/v pairs to add or update
+    if (addedTags > 0) {
+        return tagsToWrite;
+    }
+    return {};
+};
+
+const filterTagManagerRecords = (records) => {
+    let nonFtmRecords = records.filter((r) => {
+        let exists = r.originalTags.some((t) => {
+            if (t.Key.substr(0, 3).localeCompare(CONSTANTS.FTM_KEY_INDICATOR) === 0) {
+                logger.debug(`found an FTM record: ${r._pk}`);
+                return true;
+            }
+        });
+        return !exists;
+    });
+    return nonFtmRecords;
 };
 
 const enforceTagsFromAnalysis = () =>
@@ -238,17 +293,24 @@ const enforceTagsFromAnalysis = () =>
                     // Interate over the consolidated analysis record and update AWS per the defined associations in the config
                     // EC2 records
                     const newTagsToWrite = [];
-
-                    allAnalysis.forEach((analysisRec) => {
-                        const newResourceTags = createNewTagObj(analysisRec, config);
-                        //logger.info(`EC2 instance ${ec2Rec.instanceId}\n ${JSON.stringify(newInstanceTags, null, 2)}`);
-                        Object.keys(newResourceTags).length > 0 &&
-                            newTagsToWrite.push({
-                                resourceId: analysisRec.resourceIdentifier,
-                                resourceType: analysisRec.objectType,
-                                tagsToWrite: newResourceTags,
-                            });
-                    });
+                    // Filter out the objects with 'FTM' tags
+                    let filteredAnalysisRecords = filterTagManagerRecords(allAnalysis);
+                    filteredAnalysisRecords
+                        .slice(0, 50) // limiter for debugging
+                        .forEach((analysisRec) => {
+                            //allAnalysis.forEach((analysisRec) => {
+                            let newResourceTags = createNewTagObj(analysisRec, config);
+                            //logger.info(`EC2 instance ${ec2Rec.instanceId}\n ${JSON.stringify(newInstanceTags, null, 2)}`);
+                            if (Object.keys(newResourceTags).length > 0) {
+                                //Add in the tags that were valid before so we don't lose them
+                                newResourceTags = { ...newResourceTags, ...analysisRec.matchedTags };
+                                newTagsToWrite.push({
+                                    resourceId: analysisRec.resourceIdentifier,
+                                    resourceType: analysisRec.objectType,
+                                    tagsToWrite: newResourceTags,
+                                });
+                            }
+                        });
 
                     // write to a file temporarily
                     //require("fs").writeFileSync("output/tagsToWrite.json", JSON.stringify(newTagsToWrite, null, 2));
@@ -257,9 +319,8 @@ const enforceTagsFromAnalysis = () =>
 
                     let tagPromises = [];
                     const limit = plimit(1);
-                    newTagsToWrite.forEach((resource) => {
-                        //let keys = Object.keys(resource);
 
+                    newTagsToWrite.forEach((resource) => {
                         const tagPromise = limit(() =>
                             writeTagsToResource(resource.resourceId, resource.resourceType, resource.tagsToWrite)
                         );
