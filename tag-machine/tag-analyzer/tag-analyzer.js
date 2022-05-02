@@ -231,9 +231,10 @@ const resolveTaggedObject = (taggedObj) => {
 
 async function analyzeTagDefinitions(taggedObjects) {
     const resolveNormalizedTagKey = (tagKey, config) => {
-        if (config[tagKey]) return tagKey;
+        if (config[tagKey]) return { resolvedTagKey: tagKey };
 
         let resolvedTagKey;
+        let alternateKeyName;
         // Find the correct config key name
         Object.keys(config)
             .filter((k) => k !== CONSTANTS.PRIMARY_KEY_NAME)
@@ -242,19 +243,21 @@ async function analyzeTagDefinitions(taggedObjects) {
                 return config[configKey][CONSTANTS.VALID_KEY_NAMES].some((vkv) => {
                     if (vkv === tagKey) {
                         resolvedTagKey = configKey;
+                        alternateKeyName = vkv;
                         isResolved = true;
                         return true;
                     }
                 });
             });
 
-        return resolvedTagKey ? resolvedTagKey : tagKey;
+        return resolvedTagKey ? { resolvedTagKey, alternateKeyName } : { resolvedTagKey: tagKey };
     };
 
     // The tagKey must be a normalized lookup value. Otherwise, it potentially might not resolve properly
     const getTagStatus = (resource, tagKey, tagValue, config) => {
         let resolvedTagKey = tagKey;
 
+        // we're not managing the key so just return it as extra
         if (!config[tagKey]) return TAG_FINDER_STATUS.EXTRA;
 
         if (hasPopulationInstruction(resolvedTagKey, config)) {
@@ -328,28 +331,36 @@ async function analyzeTagDefinitions(taggedObjects) {
                     let normalizedTagKey = resolveNormalizedTagKey(resourceTag.Key, tagConfig);
                     let tagStatus = getTagStatus(
                         currTaggedObj,
-                        normalizedTagKey,
+                        normalizedTagKey.resolvedTagKey,
                         resourceTag.Value.toLowerCase(),
                         tagConfig
                     );
 
+                    // In order to not have duplicate key definitions in the config, some keys that are equivalent are found in the
+                    // alternate key names config. We want to switch back to that original key name when we write the final tag key and value
+                    let finalKeyName = normalizedTagKey.alternateKeyName
+                        ? normalizedTagKey.alternateKeyName
+                        : normalizedTagKey.resolvedTagKey;
+
                     switch (tagStatus) {
                         case TAG_FINDER_STATUS.VALID:
                             // Matched the tag and the value - yea!
-                            objTagAnalysis.matchedTags[normalizedTagKey] = resourceTag.Value;
+                            objTagAnalysis.matchedTags[finalKeyName] = resourceTag.Value;
                             break;
                         case TAG_FINDER_STATUS.INVALID:
                             //Matched the tag but not the value.
-                            objTagAnalysis.invalidTags[normalizedTagKey] = resourceTag.Value;
+                            objTagAnalysis.invalidTags[finalKeyName] = resourceTag.Value;
                             break;
                         case TAG_FINDER_STATUS.EXTRA:
-                            objTagAnalysis.extraTags[normalizedTagKey] = resourceTag.Value;
+                            objTagAnalysis.extraTags[finalKeyName] = resourceTag.Value;
                     }
                 });
 
-                //Loop over the tags in the config info and try to match it to one of the tags in the db object
+                //Stripping out the primary key object from the database objects to get just the map of required tags
                 let requiredTags = Object.keys(tagConfig).filter((k) => k !== CONSTANTS.PRIMARY_KEY_NAME);
 
+                // Looping over the required tags to find ones that are not in the object
+                // so we know which objects need to have required tags populated
                 requiredTags.forEach((reqTag) => {
                     let normalizedTagKey = resolveNormalizedTagKey(reqTag, tagConfig);
                     let validKeys = tagConfig[reqTag][CONSTANTS.VALID_KEY_NAMES];
@@ -357,7 +368,7 @@ async function analyzeTagDefinitions(taggedObjects) {
                         return currTaggedObj.Tags.some((currTag) => currTag.Key.toLowerCase() === vk.toLowerCase());
                     });
                     if (!keyFound) {
-                        objTagAnalysis.unmatchedTags.push(normalizedTagKey);
+                        objTagAnalysis.unmatchedTags.push(normalizedTagKey.resolvedTagKey);
                     }
                 });
 

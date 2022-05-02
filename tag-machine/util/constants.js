@@ -15,6 +15,9 @@ const constants_to_export = {
     PCF_ORG: "PCF_ORG",
     PCF_ORG_SPACE_IDENTIFIER: "org.space",
     PCF_CONFIG_ORG_LABEL: "pcforgs",
+    FTM_INVALID_KEYS: "FTM_INVALID_KEYS",
+    FTM_MISSING_KEYS: "FTM_MISSING_KEYS",
+    FTM_KEY_INDICATOR: "FTM"
 };
 
 module.exports = constants_to_export;

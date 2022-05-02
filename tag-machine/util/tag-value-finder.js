@@ -44,8 +44,6 @@ const keysMatch = (config, tagKey, tagKeyToMatch) => {
 
         return keyFound;
     }
-
-    return false;
 };
 
 const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config) => {
@@ -80,13 +78,16 @@ const tagValueFinder = (tagKey, validTags, objectType, objectIdentifier, config)
             );
         }
     } else if (config[tagKey].lookupValue) {
+        // The lookup value needs to be in this objects own list of keys
+        // i.e. if we want to lookup the product for the apmid, we need to know what the product
+        // is we're looking up. That needs to be in this resources tag keys.
+
         let lookupValue = config[tagKey].lookupValue;
         let foundRefValue;
 
-        // Only allow a reference to a matched, valid tag
         Object.keys(validTags).some((vt) => {
             if (keysMatch(config, lookupValue, vt)) {
-                // Prevent empty strings from being written
+                //Prevent empty strings from being written
                 if (validTags[vt]) {
                     let lookupValue = validTags[vt];
                     if (config[tagKey].values[lookupValue]) {
